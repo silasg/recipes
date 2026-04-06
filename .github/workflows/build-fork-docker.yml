@@ -1,0 +1,67 @@
+name: Build Fork Docker Image
+
+on:
+  push:
+    tags:
+      - 'fork/**'
+
+jobs:
+  build-container:
+    name: Build Fork Container
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Parse fork tag
+        id: parse_tag
+        run: |
+          # Tag format: fork/<version>/<feature>
+          # Example: fork/2.6.4/default-unit
+          TAG="${GITHUB_REF#refs/tags/fork/}"
+          VERSION="${TAG%%/*}"
+          FEATURE="${TAG#*/}"
+          IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/recipes-fork-${FEATURE}"
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "FEATURE=${FEATURE}" >> $GITHUB_OUTPUT
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "Parsed tag: version=${VERSION}, feature=${FEATURE}, image=${IMAGE_NAME}"
+
+      # Build Vue 3 frontend
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: yarn
+          cache-dependency-path: vue3/yarn.lock
+      - name: Install frontend dependencies
+        working-directory: ./vue3
+        run: yarn install --frozen-lockfile
+      - name: Build frontend
+        working-directory: ./vue3
+        run: yarn build
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and Push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          pull: true
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ steps.parse_tag.outputs.IMAGE_NAME }}:latest
+            ${{ steps.parse_tag.outputs.IMAGE_NAME }}:${{ steps.parse_tag.outputs.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
