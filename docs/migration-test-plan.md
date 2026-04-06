@@ -20,7 +20,7 @@ contrib/
 
 ## 1. Docker Compose Setup (`docker-compose.yml`)
 
-Two Tandoor instances, each with its own PostgreSQL database. Both build from the repo root Dockerfile (the fork).
+Source uses the **official upstream Docker image** (`vabene1111/recipes:2.6.4`) — the same version running on `app.tandoor.dev`. Target builds from the repo root Dockerfile (the fork). This mirrors the real migration scenario: upstream source → fork target.
 
 ```yaml
 services:
@@ -49,9 +49,7 @@ services:
       retries: 10
 
   source:
-    build:
-      context: ../../
-      dockerfile: Dockerfile
+    image: vabene1111/recipes:2.6.4
     environment:
       SECRET_KEY: source-test-secret-key-not-for-production
       DB_ENGINE: django.db.backends.postgresql
@@ -104,6 +102,8 @@ services:
 ```
 
 **Why PostgreSQL over SQLite**: The codebase uses PostgreSQL-specific features (`django.contrib.postgres.search`, `pg_isready` in `boot.sh`). SQLite would risk masking real issues.
+
+**Source = official upstream image**: The source uses `vabene1111/recipes:2.6.4` (the same version as `app.tandoor.dev`). This tests the real-world scenario of migrating from upstream Tandoor to the fork. The source instance will not have fork-specific fields like `Space.default_unit` — the migration script must handle this gracefully. The target builds from the repo Dockerfile (the fork).
 
 **Health checks**: `boot.sh` runs migrations and collectstatic on startup. The `wget` health check against `/openapi` confirms the app is fully ready.
 
@@ -390,7 +390,7 @@ def compare_nested_by_name(source_val, target_val, field_name, label=""):
 
 ## 8. Future Extensions
 
-- **Cross-version testing**: Change source service from `build:` to `image: vabene1111/recipes:latest` to test upstream→fork migration
+- **Same-version testing**: Change source service from `image:` to `build:` (same as target) to test fork→fork migration
 - **Large dataset testing**: Add a `--scale` flag to seed_source.py to create 100+ recipes with proportional related data
 - **CI integration**: Add to `.github/workflows/` as a separate workflow that runs on PRs touching `contrib/`
 - **Resume testing**: Once `migrate_space.py` supports `--save-state` / `--resume-from-phase`, add a test that interrupts at phase 5 and resumes
