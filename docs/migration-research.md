@@ -13,7 +13,7 @@ Goal: Transfer **all** space data from one Tandoor instance to another using onl
 ### 2.1 Core Models
 
 #### Space
-- **ForeignKeys**: `created_by` → User, `image`/`custom_space_theme`/`nav_logo`/`logo_color_*` → UserFile (all nullable, SET_NULL), `ai_default_provider` → AiProvider (nullable)
+- **ForeignKeys**: `created_by` → User, `image`/`custom_space_theme`/`nav_logo`/`logo_color_*` → UserFile (all nullable, SET_NULL), `ai_default_provider` → AiProvider (nullable), `default_unit` → Unit (nullable, SET_NULL) *(fork addition: fallback unit for property calculations)*
 - **ManyToMany**: `food_inherit` → FoodInheritField
 
 #### UserSpace
