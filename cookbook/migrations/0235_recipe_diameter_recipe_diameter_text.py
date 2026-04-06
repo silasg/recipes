@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('cookbook', '0234_alter_shoppinglist_options_and_more'),
+        ('cookbook', '0234a_fork_space_default_unit'),
     ]
 
     operations = [
