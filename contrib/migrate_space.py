@@ -102,6 +102,12 @@ class TandoorClient:
             raise APIError(f"PATCH {endpoint}/{pk}", resp)
         return resp.json()
 
+    def put(self, endpoint: str, pk: int, data: dict) -> dict:
+        resp = self._req("PUT", f"{self._url(endpoint)}{pk}/", json=data)
+        if resp.status_code not in (200, 201):
+            raise APIError(f"PUT {endpoint}/{pk}", resp)
+        return resp.json()
+
     def put_image(self, endpoint: str, pk: int, image_bytes: bytes, filename: str) -> dict:
         url = f"{self._url(endpoint)}{pk}/image/"
         headers = {k: v for k, v in self.s.headers.items() if k.lower() != "content-type"}
@@ -178,14 +184,21 @@ class MigrationState:
         return self.get(model, source_id)
 
     def remap_obj(self, model: str, obj: dict | None) -> dict | None:
-        """Remap a nested FK object like {"id": 5, "name": "..."} to target ID."""
+        """Remap a nested FK object like {"id": 5, "name": "..."} to target ID.
+
+        Preserves the 'name' field because Tandoor's WritableNestedModelSerializer
+        uses get_or_create by name, requiring name in the payload.
+        """
         if obj is None:
             return None
         src_id = obj.get("id")
         tgt_id = self.get(model, src_id)
         if tgt_id is None:
             return None
-        return {"id": tgt_id}
+        remapped = {"id": tgt_id}
+        if "name" in obj:
+            remapped["name"] = obj["name"]
+        return remapped
 
     def remap_list(self, model: str, obj_list: list[dict] | None) -> list[dict]:
         """Remap a list of nested FK objects."""
@@ -334,7 +347,7 @@ def migrate_phase3(source: TandoorClient, target: TandoorClient, state: Migratio
             if tgt_pt_id is None:
                 continue
             properties_payload.append({
-                "property_type": {"id": tgt_pt_id},
+                "property_type": {"id": tgt_pt_id, "name": prop_type.get("name", "")},
                 "property_amount": fp.get("property_amount"),
             })
 
@@ -371,14 +384,16 @@ def migrate_phase4(source: TandoorClient, target: TandoorClient, state: Migratio
     conversions = source.get_all("unit-conversion")
     log.info("Phase 4: UnitConversion — %d from source", len(conversions))
     for uc in conversions:
+        food_remapped = state.remap_obj("food", uc.get("food"))
         payload = {
             "base_amount": uc.get("base_amount"),
             "converted_amount": uc.get("converted_amount"),
             "base_unit": state.remap_obj("unit", uc.get("base_unit")),
             "converted_unit": state.remap_obj("unit", uc.get("converted_unit")),
-            "food": state.remap_obj("food", uc.get("food")),
             "open_data_slug": uc.get("open_data_slug"),
         }
+        if food_remapped is not None:
+            payload["food"] = food_remapped
         if payload["base_unit"] is None or payload["converted_unit"] is None:
             log.warning("Skipping UnitConversion %d: missing unit mapping", uc["id"])
             continue
@@ -553,25 +568,44 @@ def migrate_phase6(source: TandoorClient, target: TandoorClient, state: Migratio
         tgt_food_id = state.get("food", sf["id"])
         tgt_recipe_id = state.get("recipe", recipe_id)
         if tgt_food_id and tgt_recipe_id and not dry_run:
-            target.patch("food", tgt_food_id, {"recipe": {"id": tgt_recipe_id}})
+            recipe_name = recipe_ref.get("name", "") if isinstance(recipe_ref, dict) else ""
+            target.patch("food", tgt_food_id, {"recipe": {"id": tgt_recipe_id, "name": recipe_name}})
             food_recipe_count += 1
     log.info("Phase 6: Patched %d food→recipe links", food_recipe_count)
 
-    # Step.step_recipe back-patch
+    # Step.step_recipe back-patch (via recipe PUT to avoid Step API bug)
     step_recipe_count = 0
     src_recipes = source.get_all("recipe")
     for ro in src_recipes:
         recipe = source.get_one("recipe", ro["id"])
+        has_step_recipe = False
         for step in recipe.get("steps") or []:
             sr = step.get("step_recipe")
+            if sr:
+                has_step_recipe = True
+                break
+        if not has_step_recipe:
+            continue
+
+        tgt_recipe_id = state.get("recipe", recipe["id"])
+        if not tgt_recipe_id or dry_run:
+            continue
+        tgt_recipe = target.get_one("recipe", tgt_recipe_id)
+        tgt_steps = sorted(tgt_recipe.get("steps") or [], key=lambda s: s.get("order", 0))
+        src_steps = sorted(recipe.get("steps") or [], key=lambda s: s.get("order", 0))
+        updated = False
+        for ss, ts in zip(src_steps, tgt_steps):
+            sr = ss.get("step_recipe")
             if not sr:
                 continue
             sr_id = sr if isinstance(sr, int) else sr.get("id")
-            tgt_step_id = state.get("step", step["id"])
             tgt_sr_id = state.get("recipe", sr_id)
-            if tgt_step_id and tgt_sr_id and not dry_run:
-                target.patch("step", tgt_step_id, {"step_recipe": tgt_sr_id})
+            if tgt_sr_id:
+                ts["step_recipe"] = tgt_sr_id
+                updated = True
                 step_recipe_count += 1
+        if updated:
+            target.put("recipe", tgt_recipe_id, tgt_recipe)
     log.info("Phase 6: Patched %d step→recipe links", step_recipe_count)
 
     # Recipe.properties back-patch
@@ -590,7 +624,7 @@ def migrate_phase6(source: TandoorClient, target: TandoorClient, state: Migratio
             tgt_pt_id = state.get("property_type", pt.get("id"))
             if tgt_pt_id:
                 props_payload.append({
-                    "property_type": {"id": tgt_pt_id},
+                    "property_type": {"id": tgt_pt_id, "name": pt.get("name", "")},
                     "property_amount": p.get("property_amount"),
                 })
         if props_payload and not dry_run:
@@ -611,6 +645,7 @@ def migrate_phase7(source: TandoorClient, target: TandoorClient, state: Migratio
             "name": book.get("name"),
             "description": book.get("description", ""),
             "order": book.get("order", 0),
+            "shared": [],
         }
         if not dry_run:
             created = target.post("recipe-book", payload)
@@ -690,10 +725,16 @@ def migrate_phase8(source: TandoorClient, target: TandoorClient, state: Migratio
         if meal_type_ref:
             mt_id = meal_type_ref if isinstance(meal_type_ref, int) else meal_type_ref.get("id")
 
+        recipe_name = recipe_ref.get("name", "") if isinstance(recipe_ref, dict) else ""
+        mt_name = meal_type_ref.get("name", "") if isinstance(meal_type_ref, dict) else ""
+
+        tgt_recipe_id = state.remap_id("recipe", recipe_id) if recipe_id else None
+        tgt_mt_id = state.remap_id("meal_type", mt_id) if mt_id else None
+
         payload = {
             "title": mp.get("title", ""),
-            "recipe": {"id": state.remap_id("recipe", recipe_id)} if recipe_id and state.remap_id("recipe", recipe_id) else None,
-            "meal_type": {"id": state.remap_id("meal_type", mt_id)} if mt_id and state.remap_id("meal_type", mt_id) else None,
+            "recipe": {"id": tgt_recipe_id, "name": recipe_name} if tgt_recipe_id else None,
+            "meal_type": {"id": tgt_mt_id, "name": mt_name} if tgt_mt_id else None,
             "note": mp.get("note", ""),
             "servings": mp.get("servings", 1),
             "from_date": mp.get("from_date"),
@@ -764,7 +805,8 @@ def migrate_phase9(source: TandoorClient, target: TandoorClient, state: Migratio
                 sl_id = sl_ref if isinstance(sl_ref, int) else sl_ref.get("id")
                 tgt_sl = state.remap_id("shopping_list", sl_id)
                 if tgt_sl:
-                    remapped_lists.append({"id": tgt_sl})
+                    sl_name = sl_ref.get("name", "") if isinstance(sl_ref, dict) else ""
+                    remapped_lists.append({"id": tgt_sl, "name": sl_name})
             if remapped_lists:
                 payload["shopping_lists"] = remapped_lists
 
@@ -784,10 +826,13 @@ def migrate_phase10(source: TandoorClient, target: TandoorClient, state: Migrati
     locations = source.get_all("inventory-location")
     log.info("Phase 10: InventoryLocation — %d from source", len(locations))
     for loc in locations:
+        household_ref = loc.get("household")
+        hh_name = household_ref.get("name", "Default Household") if isinstance(household_ref, dict) else "Default Household"
         payload = {
             "name": loc.get("name"),
             "description": loc.get("description", ""),
             "is_freezer": loc.get("is_freezer", False),
+            "household": {"name": hh_name},
         }
         if not dry_run:
             created = target.post("inventory-location", payload)
@@ -798,11 +843,19 @@ def migrate_phase10(source: TandoorClient, target: TandoorClient, state: Migrati
     entries = source.get_all("inventory-entry", params={"empty": "true"})
     log.info("Phase 10: InventoryEntry — %d from source", len(entries))
     for ie in entries:
+        loc_ref = ie.get("inventory_location")
+        loc_remapped = state.remap_obj("inventory_location", loc_ref)
+        if loc_remapped is not None:
+            # InventoryLocationSerializer requires household
+            src_hh = loc_ref.get("household") if isinstance(loc_ref, dict) else None
+            hh_name = src_hh.get("name", "Default Household") if isinstance(src_hh, dict) else "Default Household"
+            loc_remapped["household"] = {"name": hh_name}
+
         payload = {
             "food": state.remap_obj("food", ie.get("food")),
             "unit": state.remap_obj("unit", ie.get("unit")),
             "amount": ie.get("amount"),
-            "inventory_location": state.remap_obj("inventory_location", ie.get("inventory_location")),
+            "inventory_location": loc_remapped,
             "expiration_date": ie.get("expiration_date"),
             "open_date": ie.get("open_date"),
         }

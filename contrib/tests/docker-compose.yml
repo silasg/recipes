@@ -42,16 +42,14 @@ services:
       db_source:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/openapi"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/openapi"]
       interval: 5s
       timeout: 5s
-      start_period: 30s
+      start_period: 90s
       retries: 20
 
   target:
-    build:
-      context: ../../
-      dockerfile: Dockerfile
+    image: ghcr.io/silasg/recipes-fork-default-unit:2.6.4
     environment:
       SECRET_KEY: target-test-secret-key-not-for-production
       DB_ENGINE: django.db.backends.postgresql
@@ -69,8 +67,8 @@ services:
       db_target:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/openapi"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/openapi"]
       interval: 5s
       timeout: 5s
-      start_period: 30s
+      start_period: 90s
       retries: 20

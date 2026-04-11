@@ -77,8 +77,8 @@ def setup_instance(container_name: str) -> dict:
     """Run setup script inside container, return parsed results."""
     result = subprocess.run(
         [
-            "docker", "exec", "-T", container_name,
-            "python", "-c", SETUP_SCRIPT,
+            "docker", "exec", container_name,
+            "/opt/recipes/venv/bin/python", "-c", SETUP_SCRIPT,
         ],
         capture_output=True,
         text=True,

@@ -97,34 +97,34 @@ def seed(client: TandoorAPIClient) -> dict:
     # Depth 3 and leaf foods with categories
     f = client.post("food/", {
         "name": "Chicken Breast",
-        "supermarket_category": {"id": sc_by_name["Meat"]["id"]},
+        "supermarket_category": {"name": "Meat"},
     })
     foods["Chicken Breast"] = f
 
     f = client.post("food/", {
         "name": "Ground Beef",
-        "supermarket_category": {"id": sc_by_name["Meat"]["id"]},
+        "supermarket_category": {"name": "Meat"},
     })
     foods["Ground Beef"] = f
 
     f = client.post("food/", {"name": "Salmon",
-                               "supermarket_category": {"id": sc_by_name["Meat"]["id"]}})
+                               "supermarket_category": {"name": "Meat"}})
     foods["Salmon"] = f
 
     f = client.post("food/", {"name": "Milk",
-                               "supermarket_category": {"id": sc_by_name["Dairy"]["id"]}})
+                               "supermarket_category": {"name": "Dairy"}})
     foods["Milk"] = f
 
     f = client.post("food/", {"name": "Cheese",
-                               "supermarket_category": {"id": sc_by_name["Dairy"]["id"]}})
+                               "supermarket_category": {"name": "Dairy"}})
     foods["Cheese"] = f
 
     f = client.post("food/", {"name": "Tomato",
-                               "supermarket_category": {"id": sc_by_name["Produce"]["id"]}})
+                               "supermarket_category": {"name": "Produce"}})
     foods["Tomato"] = f
 
     f = client.post("food/", {"name": "Onion",
-                               "supermarket_category": {"id": sc_by_name["Produce"]["id"]}})
+                               "supermarket_category": {"name": "Produce"}})
     foods["Onion"] = f
 
     manifest["food"] = list(foods.values())
@@ -137,31 +137,31 @@ def seed(client: TandoorAPIClient) -> dict:
     # Tomato: 3 properties
     client.patch("food/", f_by_name["Tomato"]["id"], {
         "properties": [
-            {"property_type": {"id": pt_by_name["Calories"]["id"]}, "property_amount": 18.0},
-            {"property_type": {"id": pt_by_name["Price per kg"]["id"]}, "property_amount": 3.50},
-            {"property_type": {"id": pt_by_name["Shelf Life"]["id"]}, "property_amount": 7.0},
+            {"property_type": {"name": "Calories"}, "property_amount": 18.0},
+            {"property_type": {"name": "Price per kg"}, "property_amount": 3.50},
+            {"property_type": {"name": "Shelf Life"}, "property_amount": 7.0},
         ],
         "properties_food_amount": 100,
-        "properties_food_unit": {"id": u_by_name["g"]["id"]},
+        "properties_food_unit": {"name": "g"},
     })
 
     # Chicken Breast: 2 properties
     client.patch("food/", f_by_name["Chicken Breast"]["id"], {
         "properties": [
-            {"property_type": {"id": pt_by_name["Calories"]["id"]}, "property_amount": 165.0},
-            {"property_type": {"id": pt_by_name["Protein Goal"]["id"]}, "property_amount": 31.0},
+            {"property_type": {"name": "Calories"}, "property_amount": 165.0},
+            {"property_type": {"name": "Protein Goal"}, "property_amount": 31.0},
         ],
         "properties_food_amount": 100,
-        "properties_food_unit": {"id": u_by_name["g"]["id"]},
+        "properties_food_unit": {"name": "g"},
     })
 
     # Milk: 1 property
     client.patch("food/", f_by_name["Milk"]["id"], {
         "properties": [
-            {"property_type": {"id": pt_by_name["Calories"]["id"]}, "property_amount": 42.0},
+            {"property_type": {"name": "Calories"}, "property_amount": 42.0},
         ],
         "properties_food_amount": 100,
-        "properties_food_unit": {"id": u_by_name["ml"]["id"]},
+        "properties_food_unit": {"name": "ml"},
     })
 
     # ===== Phase 4: Food substitutes, UnitConversion, Supermarket, Automation =====
@@ -181,28 +181,28 @@ def seed(client: TandoorAPIClient) -> dict:
     # UnitConversion: 2 generic + 2 food-specific
     conversions = []
     uc = client.post("unit-conversion/", {
-        "base_amount": 1, "base_unit": {"id": u_by_name["kg"]["id"]},
-        "converted_amount": 1000, "converted_unit": {"id": u_by_name["g"]["id"]},
+        "base_amount": 1, "base_unit": {"name": "kg"},
+        "converted_amount": 1000, "converted_unit": {"name": "g"},
     })
     conversions.append(uc)
 
     uc = client.post("unit-conversion/", {
-        "base_amount": 1, "base_unit": {"id": u_by_name["L"]["id"]},
-        "converted_amount": 1000, "converted_unit": {"id": u_by_name["ml"]["id"]},
+        "base_amount": 1, "base_unit": {"name": "L"},
+        "converted_amount": 1000, "converted_unit": {"name": "ml"},
     })
     conversions.append(uc)
 
     uc = client.post("unit-conversion/", {
-        "base_amount": 1, "base_unit": {"id": u_by_name["cups"]["id"]},
-        "converted_amount": 240, "converted_unit": {"id": u_by_name["ml"]["id"]},
-        "food": {"id": f_by_name["Milk"]["id"]},
+        "base_amount": 1, "base_unit": {"name": "cups"},
+        "converted_amount": 240, "converted_unit": {"name": "ml"},
+        "food": {"name": "Milk"},
     })
     conversions.append(uc)
 
     uc = client.post("unit-conversion/", {
-        "base_amount": 1, "base_unit": {"id": u_by_name["pieces"]["id"]},
-        "converted_amount": 150, "converted_unit": {"id": u_by_name["g"]["id"]},
-        "food": {"id": f_by_name["Tomato"]["id"]},
+        "base_amount": 1, "base_unit": {"name": "pieces"},
+        "converted_amount": 150, "converted_unit": {"name": "g"},
+        "food": {"name": "Tomato"},
     })
     conversions.append(uc)
     manifest["unit_conversion"] = conversions
@@ -221,7 +221,7 @@ def seed(client: TandoorAPIClient) -> dict:
         for i, cat_name in enumerate(cats):
             rel = client.post("supermarket-category-relation/", {
                 "supermarket": sm["id"],
-                "category": {"id": sc_by_name[cat_name]["id"]},
+                "category": {"name": cat_name},
                 "order": i,
             })
             sm_relations.append(rel)
@@ -253,15 +253,15 @@ def seed(client: TandoorAPIClient) -> dict:
         "working_time": 10,
         "waiting_time": 0,
         "servings": 2,
-        "keywords": [{"id": keywords["Quick Meals"]["id"]}, {"id": keywords["Vegetarian"]["id"]}],
+        "keywords": [{"name": "Quick Meals"}, {"name": "Vegetarian"}],
         "steps": [{
             "name": "Prepare",
             "instruction": "Chop vegetables and toss together.",
             "order": 0,
             "ingredients": [
-                {"food": {"id": f_by_name["Tomato"]["id"]}, "unit": {"id": u_by_name["pieces"]["id"]}, "amount": 3, "order": 0},
-                {"food": {"id": f_by_name["Onion"]["id"]}, "unit": {"id": u_by_name["pieces"]["id"]}, "amount": 1, "order": 1},
-                {"food": {"id": f_by_name["Salt"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 2, "order": 2},
+                {"food": {"name": "Tomato"}, "unit": {"name": "pieces"}, "amount": 3, "order": 0},
+                {"food": {"name": "Onion"}, "unit": {"name": "pieces"}, "amount": 1, "order": 1},
+                {"food": {"name": "Salt"}, "unit": {"name": "g"}, "amount": 2, "order": 2},
             ],
         }],
     })
@@ -276,9 +276,9 @@ def seed(client: TandoorAPIClient) -> dict:
         "servings": 4,
         "servings_text": "portions",
         "keywords": [
-            {"id": keywords["European"]["id"]},
-            {"id": keywords["Italian"]["id"]},
-            {"id": keywords["Cuisine"]["id"]},
+            {"name": "European"},
+            {"name": "Italian"},
+            {"name": "Cuisine"},
         ],
         "nutrition": {
             "carbohydrates": 65.0,
@@ -299,8 +299,8 @@ def seed(client: TandoorAPIClient) -> dict:
                 "instruction": "Sauté onions, add tomatoes, simmer 15 min.",
                 "order": 1,
                 "ingredients": [
-                    {"food": {"id": f_by_name["Tomato"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 400, "order": 0},
-                    {"food": {"id": f_by_name["Onion"]["id"]}, "unit": {"id": u_by_name["pieces"]["id"]}, "amount": 2, "order": 1},
+                    {"food": {"name": "Tomato"}, "unit": {"name": "g"}, "amount": 400, "order": 0},
+                    {"food": {"name": "Onion"}, "unit": {"name": "pieces"}, "amount": 2, "order": 1},
                 ],
             },
             {
@@ -308,11 +308,11 @@ def seed(client: TandoorAPIClient) -> dict:
                 "instruction": "Mix pasta with sauce, add cheese on top.",
                 "order": 2,
                 "ingredients": [
-                    {"food": {"id": f_by_name["Cheese"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 50, "order": 0},
-                    {"food": {"id": f_by_name["Salt"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 5, "order": 1},
-                    {"food": {"id": f_by_name["Tomato"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 100, "order": 2},
-                    {"food": {"id": f_by_name["Milk"]["id"]}, "unit": {"id": u_by_name["ml"]["id"]}, "amount": 50, "order": 3},
-                    {"food": {"id": f_by_name["Onion"]["id"]}, "unit": {"id": u_by_name["pieces"]["id"]}, "amount": 1, "order": 4},
+                    {"food": {"name": "Cheese"}, "unit": {"name": "g"}, "amount": 50, "order": 0},
+                    {"food": {"name": "Salt"}, "unit": {"name": "g"}, "amount": 5, "order": 1},
+                    {"food": {"name": "Tomato"}, "unit": {"name": "g"}, "amount": 100, "order": 2},
+                    {"food": {"name": "Milk"}, "unit": {"name": "ml"}, "amount": 50, "order": 3},
+                    {"food": {"name": "Onion"}, "unit": {"name": "pieces"}, "amount": 1, "order": 4},
                 ],
             },
         ],
@@ -327,7 +327,7 @@ def seed(client: TandoorAPIClient) -> dict:
             "instruction": "Do something.",
             "order": 0,
             "ingredients": [
-                {"food": {"id": f_by_name["Salt"]["id"]}, "unit": None, "amount": 1, "order": 0, "no_amount": True},
+                {"food": {"name": "Salt"}, "unit": None, "amount": 1, "order": 0, "no_amount": True},
             ],
         }],
     })
@@ -337,13 +337,13 @@ def seed(client: TandoorAPIClient) -> dict:
     r4 = client.post("recipe/", {
         "name": "Sub-Recipe Container",
         "description": "Contains a sub-recipe reference",
-        "keywords": [{"id": keywords["Quick Meals"]["id"]}],
+        "keywords": [{"name": "Quick Meals"}],
         "steps": [
             {
                 "instruction": "Make the main dish.",
                 "order": 0,
                 "ingredients": [
-                    {"food": {"id": f_by_name["Chicken Breast"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 200, "order": 0},
+                    {"food": {"name": "Chicken Breast"}, "unit": {"name": "g"}, "amount": 200, "order": 0},
                 ],
             },
             {
@@ -363,7 +363,7 @@ def seed(client: TandoorAPIClient) -> dict:
         "working_time": 45,
         "waiting_time": 30,
         "servings": 4,
-        "keywords": [{"id": keywords["Cuisine"]["id"]}, {"id": keywords["European"]["id"]}],
+        "keywords": [{"name": "Cuisine"}, {"name": "European"}],
         "nutrition": {
             "carbohydrates": 30.0,
             "fats": 15.0,
@@ -374,10 +374,10 @@ def seed(client: TandoorAPIClient) -> dict:
             "instruction": "Season chicken, roast with vegetables.",
             "order": 0,
             "ingredients": [
-                {"food": {"id": f_by_name["Chicken Breast"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 500, "order": 0},
-                {"food": {"id": f_by_name["Tomato"]["id"]}, "unit": {"id": u_by_name["pieces"]["id"]}, "amount": 2, "order": 1},
-                {"food": {"id": f_by_name["Onion"]["id"]}, "unit": {"id": u_by_name["pieces"]["id"]}, "amount": 1, "order": 2},
-                {"food": {"id": f_by_name["Salt"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 3, "order": 3},
+                {"food": {"name": "Chicken Breast"}, "unit": {"name": "g"}, "amount": 500, "order": 0},
+                {"food": {"name": "Tomato"}, "unit": {"name": "pieces"}, "amount": 2, "order": 1},
+                {"food": {"name": "Onion"}, "unit": {"name": "pieces"}, "amount": 1, "order": 2},
+                {"food": {"name": "Salt"}, "unit": {"name": "g"}, "amount": 3, "order": 3},
             ],
         }],
     })
@@ -394,18 +394,19 @@ def seed(client: TandoorAPIClient) -> dict:
     })
 
     # Step.step_recipe: Link step 2 of "Sub-Recipe Container" to "Simple Salad"
+    # Update via recipe API (direct step PATCH causes 500 on some versions)
     r4_detail = client.get("recipe/", r4["id"])
     r4_steps = sorted(r4_detail.get("steps", []), key=lambda s: s.get("order", 0))
     if len(r4_steps) >= 2:
-        step2 = r4_steps[1]
-        client.patch("step/", step2["id"], {"step_recipe": r1["id"]})
+        r4_steps[1]["step_recipe"] = r1["id"]
+        client.put("recipe/", r4["id"], r4_detail)
 
     # ===== Phase 7: Collections =====
     print("Seeding Phase 7: Collections...")
 
     # RecipeBooks
-    book1 = client.post("recipe-book/", {"name": "Favorites"})
-    book2 = client.post("recipe-book/", {"name": "Weeknight Dinners"})
+    book1 = client.post("recipe-book/", {"name": "Favorites", "shared": []})
+    book2 = client.post("recipe-book/", {"name": "Weeknight Dinners", "shared": []})
     manifest["recipe_book"] = [book1, book2]
 
     # RecipeBookEntries
@@ -437,24 +438,25 @@ def seed(client: TandoorAPIClient) -> dict:
 
     mealplans = []
     mp_defs = [
-        {"title": "Monday breakfast", "recipe": recipes["Simple Salad"]["id"],
-         "meal_type": {"id": mt_by_name["Breakfast"]["id"]},
+        {"title": "Monday breakfast", "recipe_name": "Simple Salad",
+         "meal_type": {"id": mt_by_name["Breakfast"]["id"], "name": "Breakfast"},
          "from_date": "2027-06-01T08:00:00", "to_date": "2027-06-01T09:00:00", "servings": 2},
-        {"title": "Monday lunch", "recipe": recipes["Complex Pasta"]["id"],
-         "meal_type": {"id": mt_by_name["Lunch"]["id"]},
+        {"title": "Monday lunch", "recipe_name": "Complex Pasta",
+         "meal_type": {"id": mt_by_name["Lunch"]["id"], "name": "Lunch"},
          "from_date": "2027-06-01T12:00:00", "to_date": "2027-06-01T13:00:00", "servings": 4},
-        {"title": "Monday dinner", "recipe": recipes["Chicken Dinner"]["id"],
-         "meal_type": {"id": mt_by_name["Dinner"]["id"]},
+        {"title": "Monday dinner", "recipe_name": "Chicken Dinner",
+         "meal_type": {"id": mt_by_name["Dinner"]["id"], "name": "Dinner"},
          "from_date": "2027-06-01T18:00:00", "to_date": "2027-06-01T19:00:00", "servings": 4},
-        {"title": "Note only plan", "recipe": None,
-         "meal_type": {"id": mt_by_name["Lunch"]["id"]},
+        {"title": "Note only plan", "recipe_name": None,
+         "meal_type": {"id": mt_by_name["Lunch"]["id"], "name": "Lunch"},
          "from_date": "2027-06-02T12:00:00", "to_date": "2027-06-02T13:00:00",
          "note": "Just a note, no recipe", "servings": 1},
     ]
     for mp_def in mp_defs:
-        recipe_id = mp_def.pop("recipe")
-        if recipe_id:
-            mp_def["recipe"] = {"id": recipe_id}
+        recipe_name = mp_def.pop("recipe_name")
+        if recipe_name:
+            r = recipes[recipe_name]
+            mp_def["recipe"] = {"id": r["id"], "name": r["name"]}
         mp = client.post("meal-plan/", mp_def)
         mealplans.append(mp)
     manifest["meal_plan"] = mealplans
@@ -468,12 +470,12 @@ def seed(client: TandoorAPIClient) -> dict:
 
     # ShoppingListEntries
     sle_defs = [
-        {"food": {"id": f_by_name["Tomato"]["id"]}, "unit": {"id": u_by_name["pieces"]["id"]}, "amount": 6},
-        {"food": {"id": f_by_name["Milk"]["id"]}, "unit": {"id": u_by_name["L"]["id"]}, "amount": 2},
-        {"food": {"id": f_by_name["Chicken Breast"]["id"]}, "unit": {"id": u_by_name["kg"]["id"]}, "amount": 1},
-        {"food": {"id": f_by_name["Cheese"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 200},
-        {"food": {"id": f_by_name["Onion"]["id"]}, "unit": None, "amount": 5},  # unit=null
-        {"food": {"id": f_by_name["Salt"]["id"]}, "unit": {"id": u_by_name["g"]["id"]}, "amount": 500},
+        {"food": {"name": "Tomato"}, "unit": {"name": "pieces"}, "amount": 6},
+        {"food": {"name": "Milk"}, "unit": {"name": "L"}, "amount": 2},
+        {"food": {"name": "Chicken Breast"}, "unit": {"name": "kg"}, "amount": 1},
+        {"food": {"name": "Cheese"}, "unit": {"name": "g"}, "amount": 200},
+        {"food": {"name": "Onion"}, "unit": None, "amount": 5},  # unit=null
+        {"food": {"name": "Salt"}, "unit": {"name": "g"}, "amount": 500},
     ]
     sle_list = []
     for sle_def in sle_defs:
@@ -486,23 +488,24 @@ def seed(client: TandoorAPIClient) -> dict:
 
     inv_locations = []
     for name, is_freezer in [("Fridge", False), ("Pantry", False), ("Freezer", True)]:
-        loc = client.post("inventory-location/", {"name": name, "is_freezer": is_freezer})
+        loc = client.post("inventory-location/", {"name": name, "is_freezer": is_freezer, "household": {"name": "Default Household"}})
         inv_locations.append(loc)
     manifest["inventory_location"] = inv_locations
     loc_by_name = {loc["name"]: loc for loc in inv_locations}
 
     inv_entries = []
+    hh = {"name": "Default Household"}
     ie_defs = [
-        {"food": {"id": f_by_name["Milk"]["id"]}, "unit": {"id": u_by_name["L"]["id"]},
-         "amount": 1, "inventory_location": {"id": loc_by_name["Fridge"]["id"]}},
-        {"food": {"id": f_by_name["Cheese"]["id"]}, "unit": {"id": u_by_name["g"]["id"]},
-         "amount": 500, "inventory_location": {"id": loc_by_name["Fridge"]["id"]}},
-        {"food": {"id": f_by_name["Chicken Breast"]["id"]}, "unit": {"id": u_by_name["g"]["id"]},
-         "amount": 800, "inventory_location": {"id": loc_by_name["Freezer"]["id"]}},
-        {"food": {"id": f_by_name["Salt"]["id"]}, "unit": {"id": u_by_name["kg"]["id"]},
-         "amount": 2, "inventory_location": {"id": loc_by_name["Pantry"]["id"]}},
-        {"food": {"id": f_by_name["Tomato"]["id"]}, "unit": None,
-         "amount": 0, "inventory_location": {"id": loc_by_name["Fridge"]["id"]}},  # amount=0
+        {"food": {"name": "Milk"}, "unit": {"name": "L"},
+         "amount": 1, "inventory_location": {"name": "Fridge", "household": hh}},
+        {"food": {"name": "Cheese"}, "unit": {"name": "g"},
+         "amount": 500, "inventory_location": {"name": "Fridge", "household": hh}},
+        {"food": {"name": "Chicken Breast"}, "unit": {"name": "g"},
+         "amount": 800, "inventory_location": {"name": "Freezer", "household": hh}},
+        {"food": {"name": "Salt"}, "unit": {"name": "kg"},
+         "amount": 2, "inventory_location": {"name": "Pantry", "household": hh}},
+        {"food": {"name": "Tomato"}, "unit": {"name": "pieces"},
+         "amount": 0, "inventory_location": {"name": "Fridge", "household": hh}},  # amount=0
     ]
     for ie_def in ie_defs:
         ie = client.post("inventory-entry/", ie_def)

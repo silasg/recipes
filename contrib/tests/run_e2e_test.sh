@@ -71,11 +71,24 @@ parse_setup_output() {
 # Main flow
 # ---------------------------------------------------------------------------
 
+# Check host prerequisites
+command -v docker >/dev/null 2>&1 || fail "docker not found in PATH"
+command -v python3 >/dev/null 2>&1 || fail "python3 not found in PATH"
+
+# Set up venv with dependencies
+VENV_DIR="${SCRIPT_DIR}/.venv"
+if [ ! -d "$VENV_DIR" ]; then
+    echo "==> Creating virtual environment..."
+    python3 -m venv "$VENV_DIR"
+fi
+source "${VENV_DIR}/bin/activate"
+pip install -q -r "${SCRIPT_DIR}/requirements.txt"
+
 trap cleanup EXIT
 
 echo "==> Starting Docker containers..."
 docker compose -f "${COMPOSE_FILE}" down -v 2>/dev/null || true
-docker compose -f "${COMPOSE_FILE}" up -d --build --wait 2>&1 || fail "Docker compose up failed"
+docker compose -f "${COMPOSE_FILE}" up -d --wait 2>&1 || fail "Docker compose up failed"
 
 echo ""
 echo "==> Setting up source instance..."

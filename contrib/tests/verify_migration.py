@@ -359,13 +359,42 @@ def verify_recipe_books(src: TandoorAPIClient, tgt: TandoorAPIClient) -> Verific
 
 
 def verify_cooklogs(src: TandoorAPIClient, tgt: TandoorAPIClient) -> VerificationResult:
-    def cl_key(cl):
-        recipe = cl.get("recipe")
-        r_name = recipe.get("name") if isinstance(recipe, dict) else str(recipe)
-        return (r_name, cl.get("rating"), cl.get("servings"))
+    # Build recipe ID→name maps since cook-log returns recipe as int
+    src_recipes = {r["id"]: r["name"] for r in src.get_all("recipe/")}
+    tgt_recipes = {r["id"]: r["name"] for r in tgt.get_all("recipe/")}
 
-    return verify_simple(src, tgt, "cook-log/", "CookLog",
-                         ["rating", "servings", "comment"], key_fn=cl_key)
+    def cl_key_with_map(recipe_map):
+        def cl_key(cl):
+            recipe = cl.get("recipe")
+            r_id = recipe.get("id") if isinstance(recipe, dict) else recipe
+            r_name = recipe_map.get(r_id, str(r_id))
+            return (r_name, cl.get("rating"), cl.get("servings"))
+        return cl_key
+
+    result = VerificationResult(model_name="CookLog")
+    src_items = src.get_all("cook-log/")
+    tgt_items = tgt.get_all("cook-log/")
+    result.source_count = len(src_items)
+    result.target_count = len(tgt_items)
+
+    matched, missing, extra = match_by_key(src_items, tgt_items,
+                                            key_fn=lambda x: cl_key_with_map(src_recipes if x in src_items else tgt_recipes)(x))
+
+    # Simpler approach: key both by recipe name
+    src_keyed = [(cl_key_with_map(src_recipes)(cl), cl) for cl in src_items]
+    tgt_keyed = {cl_key_with_map(tgt_recipes)(cl): cl for cl in tgt_items}
+    result.matched = 0
+    for key, s_cl in src_keyed:
+        if key in tgt_keyed:
+            result.matched += 1
+            t_cl = tgt_keyed[key]
+            mismatches = compare_fields(s_cl, t_cl, ["rating", "servings", "comment"], str(key))
+            for m in mismatches:
+                result.add_mismatch(m)
+        else:
+            result.add_missing(str(key))
+
+    return result
 
 
 def verify_mealplans(src: TandoorAPIClient, tgt: TandoorAPIClient) -> VerificationResult:
