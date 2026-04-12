@@ -29,7 +29,7 @@ EI_DIR="${REPO_DIR}/contrib/api_export_import"
 TESTS_DIR="${REPO_DIR}/contrib/tests"
 VENV="${TANDOOR_VENV:-${TESTS_DIR}/.venv}"
 PY="${VENV}/bin/python"
-EXPORT_DIR="/tmp/ei_e2e_export"
+EXPORT_DIR="${SCRIPT_DIR}/export_output"
 
 SOURCE_PORT=18080
 TARGET1_PORT=18081

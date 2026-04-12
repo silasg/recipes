@@ -87,6 +87,7 @@ vue3/.vite
 vetur.config.js
 venv/
 .venv/
+export_output/
 .idea/easy-i18n.xml
 cookbook/static/vue3
 vue3/node_modules

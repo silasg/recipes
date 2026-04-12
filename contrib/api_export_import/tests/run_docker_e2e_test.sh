@@ -29,7 +29,7 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 EI_DIR="${REPO_DIR}/contrib/api_export_import"
 TESTS_DIR="${REPO_DIR}/contrib/tests"
-EXPORT_DIR="/tmp/ei_docker_export"
+EXPORT_DIR="${SCRIPT_DIR}/export_output"
 
 SOURCE_URL="http://localhost:18080"
 TARGET_URL="http://localhost:18081"
