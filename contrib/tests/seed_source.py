@@ -71,7 +71,7 @@ def seed(client: TandoorAPIClient) -> dict:
         kw = client.post("keyword/", {"name": name})
         keywords[name] = kw
 
-    for name in ["Italian", "French", "Vegetarian", "Vegan"]:
+    for name in ["Italian", "French", "Vegetarian", "Vegan", "🌶️ Spicy", "✨ AI"]:
         kw = client.post("keyword/", {"name": name})
         keywords[name] = kw
 
@@ -230,11 +230,17 @@ def seed(client: TandoorAPIClient) -> dict:
     # Automations
     automations = []
     auto_defs = [
-        {"name": "chicken alias", "type": "FOOD_ALIAS", "param_1": "poulet", "param_2": "Chicken Breast"},
-        {"name": "gram alias", "type": "UNIT_ALIAS", "param_1": "gramme", "param_2": "g"},
-        {"name": "veggie alias", "type": "KEYWORD_ALIAS", "param_1": "veg", "param_2": "Vegetarian"},
-        {"name": "remove ads", "type": "DESCRIPTION_REPLACE", "param_1": "sponsored", "param_2": ""},
-        {"name": "skip pinch", "type": "NEVER_UNIT", "param_1": "pinch"},
+        {"name": "chicken alias", "type": "FOOD_ALIAS", "param_1": "poulet", "param_2": "Chicken Breast", "order": 0},
+        {"name": "beef alias", "type": "FOOD_ALIAS", "param_1": "rind", "param_2": "Ground Beef", "order": 1},
+        {"name": "fish alias", "type": "FOOD_ALIAS", "param_1": "lachs", "param_2": "Salmon", "order": 2, "disabled": True},
+        {"name": "gram alias", "type": "UNIT_ALIAS", "param_1": "gramme", "param_2": "g", "order": 10},
+        {"name": "liter alias", "type": "UNIT_ALIAS", "param_1": "litre", "param_2": "L", "order": 11},
+        {"name": "cup alias", "type": "UNIT_ALIAS", "param_1": "tasse", "param_2": "cups", "order": 12},
+        {"name": "veggie alias", "type": "KEYWORD_ALIAS", "param_1": "veg", "param_2": "Vegetarian", "order": 20},
+        {"name": "remove ads", "type": "DESCRIPTION_REPLACE", "param_1": "sponsored", "param_2": "", "order": 30},
+        {"name": "skip pinch", "type": "NEVER_UNIT", "param_1": "pinch", "order": 40},
+        {"name": "skip dash", "type": "NEVER_UNIT", "param_1": "dash", "order": 41},
+        {"name": "skip some", "type": "NEVER_UNIT", "param_1": "some", "order": 42, "disabled": True},
     ]
     for ad in auto_defs:
         a = client.post("automation/", ad)
@@ -363,7 +369,7 @@ def seed(client: TandoorAPIClient) -> dict:
         "working_time": 45,
         "waiting_time": 30,
         "servings": 4,
-        "keywords": [{"name": "Cuisine"}, {"name": "European"}],
+        "keywords": [{"name": "Cuisine"}, {"name": "European"}, {"name": "🌶️ Spicy"}, {"name": "✨ AI"}],
         "nutrition": {
             "carbohydrates": 30.0,
             "fats": 15.0,

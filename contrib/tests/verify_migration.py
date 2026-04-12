@@ -209,7 +209,7 @@ def verify_automations(src: TandoorAPIClient, tgt: TandoorAPIClient) -> Verifica
         return (a.get("name", ""), a.get("type", ""))
 
     return verify_simple(src, tgt, "automation/", "Automation",
-                         ["name", "type", "param_1", "param_2", "param_3", "disabled"],
+                         ["name", "type", "param_1", "param_2", "param_3", "order", "disabled"],
                          key_fn=auto_key)
 
 
