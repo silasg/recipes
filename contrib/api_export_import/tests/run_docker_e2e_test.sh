@@ -48,16 +48,17 @@ done
 # ---------------------------------------------------------------------------
 
 cleanup() {
-    rm -rf "$EXPORT_DIR"
     if [ "$KEEP_RUNNING" = true ]; then
         echo ""
-        echo "==> Containers left running (--keep). Clean up with:"
+        echo "==> Containers and export left running (--keep). Clean up with:"
         echo "    docker compose -f ${COMPOSE_FILE} down -v"
+        echo "    rm -rf ${EXPORT_DIR}"
         return
     fi
     echo ""
-    echo "==> Cleaning up containers and volumes..."
+    echo "==> Cleaning up containers, volumes, and export..."
     docker compose -f "${COMPOSE_FILE}" down -v 2>/dev/null || true
+    rm -rf "$EXPORT_DIR"
 }
 
 fail() {
