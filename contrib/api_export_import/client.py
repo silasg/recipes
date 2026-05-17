@@ -5,6 +5,23 @@ import time
 import requests
 
 
+_IMAGE_MAGIC = [
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"RIFF", "image/webp"),  # WEBP starts with RIFF....WEBP; RIFF prefix is enough here
+]
+
+
+def _sniff_image_content_type(data: bytes) -> str | None:
+    """Return the MIME type implied by an image's magic bytes, or None."""
+    for magic, ct in _IMAGE_MAGIC:
+        if data.startswith(magic):
+            return ct
+    return None
+
+
 class APIError(Exception):
     def __init__(self, action: str, resp: requests.Response):
         self.status_code = resp.status_code
@@ -81,25 +98,53 @@ class TandoorClient:
             raise APIError(f"PUT {endpoint}/{pk}", resp)
         return resp.json()
 
-    def put_image(self, endpoint: str, pk: int, image_bytes: bytes, filename: str) -> dict:
+    def put_image(self, endpoint: str, pk: int, image_bytes: bytes, filename: str,
+                  content_type: str | None = None) -> dict:
         url = f"{self._url(endpoint)}{pk}/image/"
-        headers = {k: v for k, v in self.s.headers.items() if k.lower() != "content-type"}
-        resp = self._req(
-            "PUT", url,
-            files={"image": (filename, image_bytes, "image/png")},
-            headers=headers,
-        )
+        # Sniff content type from the actual bytes when not provided, so the
+        # server stores the file with the correct extension and PIL re-encodes
+        # to the correct format (avoids JPEG → PNG transcoding bloat).
+        ct = content_type or _sniff_image_content_type(image_bytes) or "application/octet-stream"
+        # Temporarily remove the session-level Content-Type header so that
+        # requests can set the correct multipart/form-data boundary.
+        # Session.request merges (not replaces) headers, so passing a custom
+        # headers dict without Content-Type is not enough — the session's
+        # default "application/json" still leaks through.
+        saved_ct = self.s.headers.pop("Content-Type", None)
+        try:
+            resp = self._req(
+                "PUT", url,
+                files={"image": (filename, image_bytes, ct)},
+            )
+        finally:
+            if saved_ct is not None:
+                self.s.headers["Content-Type"] = saved_ct
         if resp.status_code not in (200, 201):
             raise APIError(f"PUT image {endpoint}/{pk}", resp)
         return resp.json()
 
     def download_image(self, url: str) -> bytes | None:
+        """Download an image from an arbitrary URL.
+
+        Uses a bare ``requests.get`` instead of the authenticated session: the
+        session sets ``Authorization: Bearer ...`` and ``Content-Type:
+        application/json`` on every request, which breaks S3 presigned URLs
+        (S3 returns HTTP 400 when an Authorization header is present alongside
+        the signature in the query string).
+        """
         if not url:
             return None
-        try:
-            resp = self._req("GET", url)
-            if resp.status_code == 200:
-                return resp.content
-        except Exception:
-            pass
+        last_exc = None
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, timeout=self.timeout)
+                if resp.status_code == 200:
+                    return resp.content
+                return None
+            except requests.ConnectionError as e:
+                last_exc = e
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+        if last_exc is not None:
+            return None
         return None
