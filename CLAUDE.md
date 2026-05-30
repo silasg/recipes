@@ -21,7 +21,7 @@ Tandoor Recipes is a self-hosted recipe management application built with Django
 
 ```
 recipes/              # Django project settings (settings.py, urls.py, wsgi.py)
-cookbook/              # Main Django app
+cookbook/             # Main Django app
   ├── models.py       # 50+ models (Recipe, Food, Ingredient, Step, MealPlan, etc.)
   ├── serializer.py   # DRF serializers (~97KB)
   ├── urls.py         # URL routing (REST API under /api/)
@@ -65,6 +65,7 @@ vue3/                 # Vue 3 frontend
   │   └── types/          # TypeScript type definitions
   ├── package.json
   └── vite.config.ts
+contrib/              # Out-of-tree tooling (migration, AI provider bootstrap)
 docs/                 # MkDocs documentation
 ```
 
@@ -73,10 +74,10 @@ docs/                 # MkDocs documentation
 ### Backend (Django)
 
 ```bash
-pip install -r requirements.txt     # Install Python dependencies
-python manage.py runserver           # Start dev server (port 8000)
-python manage.py migrate             # Run migrations
-python manage.py makemigrations      # Create new migrations
+pip install -r requirements.txt           # Install Python dependencies
+python manage.py runserver                # Start dev server (port 8000)
+python manage.py migrate                  # Run migrations
+python manage.py makemigrations           # Create new migrations
 python manage.py collectstatic --noinput  # Collect static files
 ```
 
@@ -84,9 +85,9 @@ python manage.py collectstatic --noinput  # Collect static files
 
 ```bash
 cd vue3
-yarn install                         # Install dependencies
-yarn dev                             # Vite dev server with HMR (port 5173)
-yarn build                           # Production build (outputs to cookbook/static/vue3/)
+yarn install                              # Install dependencies
+yarn dev                                  # Vite dev server with HMR (port 5173)
+yarn build                                # Production build (outputs to cookbook/static/vue3/)
 ```
 
 ### Testing
@@ -112,15 +113,15 @@ pytest cookbook/tests/other/
 - Config: `pytest.ini` (pytest-django, `-n auto` for parallel, coverage enabled)
 - Factories: `cookbook/tests/factories/` using FactoryBoy + pytest-factoryboy
 - Multi-tenant tests use `space_1` / `space_2` fixtures for isolation
-- Test database uses MD5 password hasher for speed
+- Test database uses MD5 password hasher for speed — don't rely on production-grade hashing in tests
 
 ### Linting & Formatting
 
 ```bash
-flake8                               # Python linting
-yapf -i <file>                       # Python formatting
-isort <file>                         # Import sorting
-npx prettier --write <file>          # JS/Vue formatting
+flake8                                    # Python linting
+yapf -i <file>                            # Python formatting
+isort <file>                              # Import sorting
+npx prettier --write <file>               # JS/Vue formatting
 ```
 
 ## Code Style & Conventions
@@ -174,11 +175,29 @@ Plugins are loaded from `recipes/plugins/` directory. Each plugin can:
 - Add custom Django apps
 
 ### Key Architecture Decisions
-
 - **Space isolation**: Every model with user data belongs to a `Space`, enforced at ORM level via `django-scopes`.
 - **Recipe import**: 25 format importers in `cookbook/integration/`. Each implements a consistent interface.
 - **Storage backends**: Recipes can store media on local disk, S3, Dropbox, or Nextcloud.
 - **AI features**: Integrated via `litellm` in `cookbook/helper/ai_helper.py`.
+
+## contrib/ — Out-of-Tree Tooling
+
+This fork carries operator tooling that isn't part of upstream Tandoor. See `contrib/README.md` for usage, but at a glance:
+
+- **`contrib/migrate_space.py`** — One-shot space migration from a live source instance to a live target instance via REST API. Handles dependency ordering, ID remapping, tree structures. Use when both instances are reachable simultaneously.
+- **`contrib/api_export_import/`** — Two-step migration: `export.py` writes all space data to a local directory; `import.py` reads that directory and POSTs into any target. Use when the source must be decommissioned before the target is ready, or when you want a reviewable on-disk snapshot. Has its own `README.md`.
+- **`contrib/add_ai_providers.sh`** — Bulk-creates the standard OpenRouter-backed AI provider lineup (Sonnet, Haiku, GPT-4o, DeepSeek, Gemini variants) with task-specific descriptions. Resolves the user's active space at runtime.
+
+E2E tests for the migration tools live in `contrib/tests/` (live-to-live) and `contrib/api_export_import/tests/` (export/import). Both use docker-compose to spin up source/target instances.
+
+Credentials for all contrib/ tooling come from gitignored project-root files:
+- `tandoor_token.txt` — Tandoor API token
+- `tandoor_url.txt` — Tandoor instance base URL
+- `openrouter_api_key.txt` — OpenRouter API key
+
+Detailed Claude Code skills live in `.claude/skills/`:
+- `tandoor-ai-providers/` — model-to-task recommendations, API quirks, payloads
+- `tandoor-recipe-mapping/` — first-mention ingredient↔step mapping algorithm
 
 ## CI/CD
 
@@ -190,7 +209,7 @@ Plugins are loaded from `recipes/plugins/` directory. Each plugin can:
 ## Environment Configuration
 
 - Copy `.env.template` to `.env` for local development
-- Key env vars: `SECRET_KEY`, `DEBUG`, `DB_ENGINE`, `POSTGRES_*`, `REDIS_HOST`, `ENABLE_SIGNUP`
+- Key env vars: `SECRET_KEY`, `DEBUG`, `DB_ENGINE`, `POSTGRES_*`, `REDIS_HOST`, `SOCIAL_PROVIDERS`, `LOG_LEVEL`, `ENABLE_SIGNUP`
 - Database: Set `DB_ENGINE=django.db.backends.postgresql` for PostgreSQL
 - Redis cache: Set `CACHE_DEFAULT` and `CACHE_TIMEOUT`
 - Test uses `TEST_DATABASE_URL` or `TEST_POSTGRES_*` vars
@@ -201,6 +220,7 @@ Plugins are loaded from `recipes/plugins/` directory. Each plugin can:
 - The `serializer.py` and `views/api.py` files are very large (~97KB and ~175KB). Read only the relevant sections.
 - Frontend API client is auto-generated from OpenAPI schema — don't edit `vue3/src/openapi/` files manually.
 - Migrations must be created and committed when changing models.
+- Test database uses MD5 password hasher for speed — don't rely on production-grade hashing in tests.
 
 ## Dev Container
 

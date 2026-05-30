@@ -86,6 +86,8 @@ vue3/.vite
 # Configs
 vetur.config.js
 venv/
+.venv/
+export_output/
 .idea/easy-i18n.xml
 cookbook/static/vue3
 vue3/node_modules
@@ -95,3 +97,17 @@ vue3/src/plugins
 docs/reference/
 .idea/vcs.xml
 .idea/db-forest-config.xml
+
+# Local Tandoor credentials and instance config (never commit)
+tandoor_token.txt
+tandoor_url.txt
+openrouter_api_key.txt
+
+# Local AI provider / migration tooling output
+contrib/prodexport/
+
+# OS / editor noise
+.DS_Store
+
+# Claude Code per-machine settings (skills/ is kept)
+.claude/settings.local.json
