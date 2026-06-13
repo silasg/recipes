@@ -51,7 +51,7 @@ Used when importing the backlog in bulk so a later interactive session can do al
 
 1. Run **Phase 1–3** (scrape → persist → image) and **Phase 5** (audit). Skip Phase 4's *delegation style* note below — mapping still happens (it's stage 3), but via the contract in `tandoor-recipe-mapping` ("Mapping as a delegable step").
 2. **Never** run Phase 6 or 7. Do not merge, alias, edit, or delete any food/unit. The audit only *records* what's new.
-3. **Write the per-recipe cleanup artifact** to `docs/mdimport/cleanup/recipe-<RID>-<slug>.md` — same shape as the worked example `docs/mdimport/cleanup/recipe-22-wot.md` (recipe id + source + new foods/units table with suggested action + target id + nutrition coverage). This is the input the batch cleanup session consumes.
+3. **Write the per-recipe cleanup artifact** to `docs/mdimport/cleanup/recipe-<RID>-<slug>.md` — same shape as the worked example `docs/mdimport/cleanup/recipe-49-one-pot-pasta-rote-bete.md` (recipe id + source + new foods/units table with suggested action + target id + nutrition coverage, plus a `## Problems` section). This is the input the batch cleanup session consumes.
 4. **Advance the backlog** (`docs/mdimport/backlog.md`): move the URL out of *Standard URL backlog* into *Doing* under the **furthest stage it reached** (3 Mapped normally; 1 Imported if image failed; etc.), with a one-line "next:" pointer to the cleanup file.
 5. **Record problems** for the joint pass. Anything needing a human — see Failure routing — goes into a `## Problems` section of that recipe's cleanup file (specific and actionable, e.g. "image 403 from host", "2 ingredients unmapped: X, Y", "duplicate of recipe 14"). Do not stop the run for these; note and continue.
 
@@ -121,10 +121,11 @@ The action sets `parser_classes=[MultiPartParser]` (`cookbook/views/api.py:1840`
 
 2. **`image=@file` (we supply the bytes).** Download the image **through the proxy** (plain `curl`, NO `--noproxy` — see Credentials), then upload the file to the instance with `--noproxy`:
    ```bash
-   curl -sS -L "$IMAGE_URL" -o /tmp/hero.img          # public host → proxy, no --noproxy
+   curl -sS -L "$IMAGE_URL" -o /tmp/hero.jpg          # public host → proxy, no --noproxy
    curl -sS --noproxy '*' -X PUT -H "Authorization: Bearer $TOKEN" \
-     -F "image=@/tmp/hero.img" "$BASE/api/recipe/$RID/image/"
+     -F "image=@/tmp/hero.jpg" "$BASE/api/recipe/$RID/image/"
    ```
+   The temp file must carry a real image extension (`.jpg`/`.png`/`.webp`), not `.img`, or the PUT 400s with "File extension 'img' is not allowed."
    `curl` handles non-ASCII paths fine on the download leg. Verify success: response `image` field is a non-null `/media/recipes/...` path.
 
 Skip if `recipe.image_url` is empty. In **Autonomous mode**, if both paths fail (e.g. source 403s the download too), do **not** block — record `image: pending (<reason>)` as a recipe problem and continue; the recipe still advances (it just sits at Stage 1 instead of Stage 2).

@@ -13,6 +13,10 @@ Tandoor's **AI** importer. Instagram reels are not structured recipe pages, so
 the regular URL scraper can't read them — but the reel's **caption** almost
 always contains the full recipe (ingredients, steps, often nutrition).
 
+The human-written annotations on `### Instagram` backlog entries (a guessed title
+or note) can be inaccurate or describe a different recipe than the reel's actual
+current caption — always go by the freshly scraped caption, not the backlog note.
+
 This skill only owns the **front-end** that's unique to Instagram: scrape the
 caption + thumbnail, then convert the caption to a recipe via `/api/ai-import/`.
 The `/api/ai-import/` response has the **exact same shape** as
@@ -143,6 +147,17 @@ Body-level checks (the endpoint returns 200 with `error:true` for soft failures)
   a second copy).
 - A server-appended `✨ AI` keyword is normal — leave it.
 
+**Set `source_url` before persisting.** The `/api/ai-import/` response leaves
+`recipe.source_url` empty (it received caption *text*, not a URL), so the
+recipe would persist with no provenance link back to the reel. Inject it:
+
+```python
+recipe["source_url"] = URL   # the instagram.com/reel/... URL from Phase 0
+```
+
+(Verified 2026-06-13: a reel imported without this had `source_url: ''`; patch it
+afterwards with `PATCH /api/recipe/$RID/ {"source_url": "<reel URL>"}` if missed.)
+
 Then hand `recipe` / `images` / `duplicates` to **`tandoor-url-import` Phase 2**
 and continue through its pipeline.
 
@@ -197,10 +212,14 @@ signed URLs and may block Tandoor's server-side fetcher, whereas the bytes
 download cleanly through the proxy (verified: HTTP 200, `image/jpeg`).
 
 ```bash
-curl -sS -L "$IMAGE_URL" -o /tmp/ig_hero.img          # public CDN → proxy, no --noproxy
+curl -sS -L "$IMAGE_URL" -o /tmp/ig_hero.jpg          # public CDN → proxy, no --noproxy
 curl -sS --noproxy '*' -X PUT -H "Authorization: Bearer $TOKEN" \
-  -F "image=@/tmp/ig_hero.img" "$BASE/api/recipe/$RID/image/"
+  -F "image=@/tmp/ig_hero.jpg" "$BASE/api/recipe/$RID/image/"
 ```
+
+The temp file must carry a real image extension (`.jpg`/`.png`/`.webp`), not
+`.img`, or the PUT 400s with "File extension 'img' is not allowed."
+(Instagram `og:image` is JPEG.)
 
 If the URL has expired between Phase 0 and here, re-scrape Phase 0 to refresh it.
 
@@ -217,6 +236,9 @@ Add these to `tandoor-url-import`'s routing rules:
   (autonomous).
 - **Caption has no real recipe** (just marketing / "recipe in comments"): the AI
   returns a thin/empty recipe — treat like a soft scrape error; don't persist.
+- **Caption has ingredients but no method** → persist anyway, but record a problem
+  note "no cooking method in caption — steps must be added manually" (autonomous)
+  or flag to the user (interactive).
 - **Facebook URLs** in the backlog are out of scope: both `story.php` and
   private-group `permalink` forms sit behind a login/members wall and don't
   expose the caption anonymously (verified 2026-06-13). Don't attempt them with
@@ -245,6 +267,12 @@ Add these to `tandoor-url-import`'s routing rules:
 - AI output comes back with **all ingredients on `steps[0]`** and `order: null`
   throughout → the url-import Phase 2 order-fix and Phase 4 mapping are both
   required, exactly as for URL scrapes.
+- **Method-poor captions are common:** a reel's caption frequently lists the full
+  ingredient set but **no written method** (the steps are only spoken/shown in the
+  video). `/api/ai-import/` returns `error:false` and parses ingredients fine, but
+  the recipe has a single step with an empty `instruction` (or no real method
+  steps). This is not a scrape failure — persist it — but it's ingredient-rich and
+  method-poor and needs a human to add the method (see Failure routing).
 
 ## Related
 
