@@ -54,6 +54,34 @@ For each ingredient (identified by `food.name`):
 
 When an ingredient is mentioned in multiple steps, always pick the **first** step (the user's rule). Don't duplicate.
 
+## Duplicate food names & sub-recipes (map by pk, not name)
+
+Some recipes bundle two sub-recipes under section-header steps (e.g. "Misir Wot" / "Alicha Wot" in recipe 22). The **same food name then appears in two separate Ingredient rows** — `Knoblauch`, `Möhre`, `Ingwer`, `Berbere Gewürz` each twice. The by-name script template below builds `by_food = {name: ingredient}` and **silently overwrites** the first row, mismapping the recipe.
+
+Detect this: a recipe has duplicate `food.name` values across its ingredient list, and/or has header-only steps (instruction is just a title, no verbs). When detected:
+
+1. **Identify ingredients by `ingredient.pk`, not by name.** Use `apply_mapping_by_pk` (below), which keys the target lists on pk.
+2. **Respect sub-recipe boundaries.** Ingredients in the first sub-recipe block (by their order in the dump step) may only map to that sub-recipe's steps; likewise the second. A `Knoblauch` in the Misir block maps to a Misir step, not the Alicha garlic step, even though both say "Knoblauch".
+3. The two header steps stay empty (no ingredients) — they're titles.
+
+```python
+def apply_mapping_by_pk(recipe_id, mapping):
+    """mapping: dict UI-step-index (1-based) -> list of ingredient PKs"""
+    _, rec = api('GET', f'/api/recipe/{recipe_id}/')
+    by_pk = {i['id']: i for s in rec['steps'] for i in s['ingredients']}
+    step_pks = [s['id'] for s in rec['steps']]
+    target = {pk: [] for pk in step_pks}
+    consumed = set()
+    for ui_idx, ipks in mapping.items():
+        for ipk in ipks:
+            target[step_pks[ui_idx - 1]].append(by_pk[ipk]); consumed.add(ipk)
+    for ipk in by_pk:                       # leftovers stay on the dump step
+        if ipk not in consumed: target[step_pks[0]].append(by_pk[ipk])
+    for pk in step_pks:
+        code, _ = api('PATCH', f'/api/step/{pk}/', {'ingredients': target[pk]})
+        print(f"  step pk={pk}: HTTP {code}, {len(target[pk])} ingredients")
+```
+
 ### German synonym map (extend as you encounter new ones)
 
 | Food name | Also matches |
@@ -69,6 +97,17 @@ When an ingredient is mentioned in multiple steps, always pick the **first** ste
 | `Kidneybohnen` | "Bohnen" |
 | `Schlagsahne` | "Sahne" |
 | `Schmand` | "Crème fraîche" pattern (different products though — don't conflate) |
+| `Risottoreis`, `Basmatireis` | "Reis" |
+| `Spitzpaprika` | "Paprika" |
+| `Gemüsebrühe` | "Brühe" |
+| `Olivenöl`, `etwas Öl` | "Öl" |
+| `rote Linsen` | "Linsen" |
+| `gehackte Tomaten` | "Tomaten", "Dosentomaten" |
+| `grüne Chilischoten` | "Chili" |
+| `Korianderpulver` | "Koriander" |
+| `Zimtpulver` | "Zimt" |
+| `etwas Salz` | "Salz", "abschmecken" |
+| qualifier-prefixed (`kleine Zucchini`, `etwas Butter`) | the bare food ("Zucchini", "Butter") |
 
 For substring matching, lowercase both sides. Plural German endings (-n, -en, -e) are usually handled by substring match since the food name is the stem.
 
@@ -94,7 +133,9 @@ def api(method, path, data=None):
     except urllib.error.HTTPError as e: return e.code, e.read().decode()
 
 def apply_mapping(recipe_id, mapping):
-    """mapping: dict UI-step-index (1-based) -> list of food names"""
+    """mapping: dict UI-step-index (1-based) -> list of food names.
+    WARNING: by_food keys on name and collides on duplicate food names
+    (sub-recipes). For those recipes use apply_mapping_by_pk instead."""
     _, rec = api('GET', f'/api/recipe/{recipe_id}/')
     by_food = {i['food']['name']: i for s in rec['steps'] for i in s['ingredients']}
     step_pks = [s['id'] for s in rec['steps']]
@@ -137,6 +178,18 @@ apply_mapping(1, {
 4. **Show** the proposed mapping to the user before applying (especially the first time, or when many ingredients lack literal matches).
 5. **Apply** with `apply_mapping`. The script PATCHes every step with its target list.
 6. **Verify** by re-fetching and printing each step's ingredients.
+
+## Mapping as a delegable step (pure, no HTTP)
+
+When called from `tandoor-url-import`'s autonomous loop, the mapping can run as its own child agent so the recipe-domain reasoning stays uncluttered by HTTP/JSON. Keep a clean boundary:
+
+- **Parent (import agent)** does all HTTP: GET the recipe, then PATCH steps with the returned mapping.
+- **Child (mapping agent)** does **zero HTTP**. It is a pure function:
+  - **Input:** `{ steps: [{order, instruction}], ingredients: [{pk, food, amount, unit}] }`
+  - **Output:** `{ ingredient_pk: step_order }` (omit a pk to leave it on the dump step; list unmapped pks separately for the problem note).
+- The child reads full instructions, applies first-mention + synonyms + the sub-recipe boundary rule, and returns the pk→order map. The parent feeds that map straight into `apply_mapping_by_pk`.
+
+This split is optional — inline mapping is fine for small recipes — but the input/output contract above is fixed either way, so inline mapping can be promoted to a child with no rework. The child must key on **pk**, never name (see duplicate-food rule).
 
 ## Don't
 
