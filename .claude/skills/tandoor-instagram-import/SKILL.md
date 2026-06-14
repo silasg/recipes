@@ -91,8 +91,13 @@ cat <<'EOF' | agent-browser eval --stdin > /tmp/ig_scrape.json
 const cand = ["meta[property='og:description']","meta[property='twitter:description']","meta[property='og:title']"]
   .map(s => document.querySelector(s)?.content).filter(Boolean);
 const description = cand.sort((a,b)=>b.length-a.length)[0] || null;   // longest = the caption
-const imageURL = document.querySelector("meta[property='og:image']")?.content || null;
-JSON.stringify({description, imageURL});
+const imageURL = document.querySelector("meta[property='og:image']")?.content || null;  // play-buttoned; DON'T attach
+const imgs = Array.from(document.querySelectorAll('img'))
+  .map(i => ({src: i.src, w: i.naturalWidth, h: i.naturalHeight})).filter(i => i.w > 200);  // for the clean cover frame (Phase 3)
+const html = document.documentElement.innerHTML;
+const grab = (re) => {const s=new Set();let m;while((m=re.exec(html))){s.add(m[1]);}return [...s];};
+const videoURLs = grab(/"video_versions".{0,60}?"url":"(https:[^"]+?)"/g);  // for the video-sample fallback (Phase 3)
+JSON.stringify({description, imageURL, imgs, videoURLs});
 EOF
 agent-browser close --all
 ```
@@ -110,8 +115,10 @@ Checks before continuing:
 - `description` empty/None → the page didn't render the caption (login wall,
   age-gate, deleted, or rate-limited). Do **not** call the AI. Route as a
   problem (see Failure routing).
-- Save `image_url` for Phase 3. These are **signed CDN URLs that expire**
-  (`oe=` query param) — download promptly during this run; don't stash for later.
+- Save `imgs` + `videoURLs` for Phase 3 (the clean cover frame and the
+  video-sample fallback — **not** `image_url`/`og:image`, which is play-buttoned).
+  These are **signed CDN URLs that expire** (`oe=` query param) — download
+  promptly during this run; don't stash for later.
 
 ## Phase 1 — AI import (caption → recipe)
 
@@ -204,24 +211,64 @@ Guidance:
 - **Autonomous mode:** default to a known-good provider (Gemini Flash) chosen
   once; if a reel returns the fence error, record it as a problem and continue.
 
-## Phase 3 note — image (Instagram-specific)
+## Phase 3 note — image (Instagram-specific): get a CLEAN thumbnail
 
-Use `tandoor-url-import` Phase 3, but prefer the **download-then-upload** path
-over the server-side `image_url=` fetch: Instagram's CDN serves short-lived
-signed URLs and may block Tandoor's server-side fetcher, whereas the bytes
-download cleanly through the proxy (verified: HTTP 200, `image/jpeg`).
+**Do not attach `og:image`.** On reels the `og:image` is the `best_image_urlgen`
+square thumbnail with Instagram's **play-button overlay + the creator's title
+text baked into the pixels** — re-fetching it can't remove them (verified
+2026-06-14, see `docs/agents/research/2026-06-14-instagram-reel-clean-thumbnail.md`).
+Use a clean source instead, then PUT via download-then-upload (Instagram's CDN
+serves short-lived signed URLs and may block Tandoor's server-side fetcher;
+bytes download cleanly through the proxy).
+
+**Primary — the clean cover frame from the DOM.** Each reel page carries exactly
+one `<img>` whose `efg` query param decodes to a `vencode_tag` containing
+`video_additional_cover_frame` (640×1136, 9:16, no overlay). Every other `<img>`
+is a related-reel thumbnail (all play-buttoned) — don't pick those. Harvest the
+`<img>` srcs in Phase 0 and select with:
+
+```python
+import json, base64, urllib.parse as up
+def efg_tag(u):
+    q = up.parse_qs(up.urlparse(u).query); raw = q.get('efg', [''])[0]
+    raw += '=' * (-len(raw) % 4)
+    return base64.b64decode(raw).decode('utf8', 'ignore') if raw else ''
+clean = next((i['src'] for i in imgs if 'video_additional_cover_frame' in efg_tag(i['src'])), None)
+```
 
 ```bash
-curl -sS -L "$IMAGE_URL" -o /tmp/ig_hero.jpg          # public CDN → proxy, no --noproxy
+curl -sS -L "$CLEAN_URL" -o /tmp/ig_hero.jpg          # public CDN → proxy, no --noproxy
 curl -sS --noproxy '*' -X PUT -H "Authorization: Bearer $TOKEN" \
   -F "image=@/tmp/ig_hero.jpg" "$BASE/api/recipe/$RID/image/"
 ```
 
+**Fallback — sample the video when the clean frame is poor.** The cover frame is
+an *arbitrary* video frame; sometimes it's awkward (subject half-out of frame,
+mostly-empty background). When it is, download the reel's mp4 and pick the best
+frame by eye. The real progressive mp4 URL is in the page's embedded
+`video_versions` JSON (the `<video src>` is a useless `blob:` URL); it's
+JSON-escaped — unescape `\/`→`/` and `%`→`%`.
+
+```bash
+curl -sS -L "$VIDEO_URL" -o /tmp/reel.mp4             # public CDN → proxy
+# contact sheet: one timestamped frame every 2s, tiled
+ffmpeg -y -i /tmp/reel.mp4 -vf "fps=1/2,scale=240:-1,drawtext=text='%{pts\:hms}':x=4:y=4:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.6" /tmp/f_%02d.jpg -hide_banner -loglevel error
+ffmpeg -y -pattern_type glob -i '/tmp/f_*.jpg' -filter_complex "tile=5x4:margin=4:padding=4" /tmp/sheet.jpg -hide_banner -loglevel error
+# read sheet.jpg, choose a timestamp, then re-extract full-res with -ss AFTER -i (decode-accurate)
+ffmpeg -y -i /tmp/reel.mp4 -ss "$TS" -frames:v 1 -q:v 2 /tmp/ig_hero.jpg -hide_banner -loglevel error
+```
+
+- Reels usually open on the plated beauty shot at t≈0–0.5 and repeat it near the
+  end — those are the best covers.
+- **Seeking gotcha:** input seek (`-ss` *before* `-i`) snaps to a keyframe and
+  lands on the wrong/blurred frame. For the final full-res extract put `-ss`
+  *after* `-i`.
+
 The temp file must carry a real image extension (`.jpg`/`.png`/`.webp`), not
 `.img`, or the PUT 400s with "File extension 'img' is not allowed."
-(Instagram `og:image` is JPEG.)
 
-If the URL has expired between Phase 0 and here, re-scrape Phase 0 to refresh it.
+If any CDN URL (cover frame or mp4) has expired between Phase 0 and here,
+re-scrape Phase 0 to refresh it.
 
 ## Failure routing (Instagram-specific)
 
