@@ -102,6 +102,7 @@ docs/reference/
 tandoor_token.txt
 tandoor_url.txt
 openrouter_api_key.txt
+fdc_api_key.txt
 
 # Local AI provider / migration tooling output
 contrib/prodexport/
