@@ -274,6 +274,11 @@ curl --noproxy '*' -s -w "\nHTTP %{http_code}\n" -X POST \
 ```
 
 Notes:
+- **`food.name` is REQUIRED for food-scoped UCs — `{"food":{"id":N}}` alone 400s**
+  with `{"food":{"name":["This field is required."]}}` (the serializer keys on the
+  name, not the id). Always send `{"id":N,"name":"<exact food name>"}`; if you only
+  have the id, GET `/api/food/$FID/` for the name first. (Verified 2026-06-14 — a
+  bulk UC run failed every row with id-only payloads.)
 - 201 on create, 200 on idempotent return (serializer matches on `(food.name iexact, base_unit.name iexact, converted_unit.name iexact, space)`).
 - `food: null` for space-wide conversions. Default to **food-scoped** for densities (1 TL salt ≠ 1 TL cinnamon) and for piece-units (1 Zehe Knoblauch ≠ 1 Zehe Kardamom). Only use space-wide for shape-only cooking-volume units when the cook genuinely treats them as a fixed volume regardless of contents — rare in practice.
 - `base_unit`/`converted_unit` accept nested writes: known unit names match by name; unknown names get created. If you're not sure the unit exists, GET `/api/unit/?query=<name>` first.

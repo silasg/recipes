@@ -11,6 +11,19 @@ The user is working through `docs/mdimport/backlog.md` (or naming a single URL) 
 
 This skill is the orchestrator. It delegates Phase 4 (ingredient↔step mapping) to the existing `tandoor-recipe-mapping` skill.
 
+### Which import skill — routing
+
+| Source situation | Skill |
+|---|---|
+| `recipe-from-source` returns a **populated** recipe (real structured data) | **this skill** |
+| `recipe-from-source` returns `error:true` / empty recipe / "No usable data", **or** a JSON-LD `Recipe` with an **empty** `recipeIngredient` (hollow schema), **or** the content sits behind a bot-block / paywall / login the scraper can't reach | **`tandoor-unstructured-import`** (agent/Opus extracts directly, bypassing `/api/ai-import/`) |
+| `instagram.com/reel/<id>` | **`tandoor-instagram-import`** |
+
+When Phase 1 here comes back hollow (see Phase 1 checks), hand off to
+`tandoor-unstructured-import` rather than parking the URL. The downstream
+pipeline (persist onward) is shared — that skill delegates Phases 3/5/6/7 back to
+this one.
+
 ## Credentials
 
 From project root (gitignored):
@@ -56,7 +69,7 @@ Used when importing the backlog in bulk so a later interactive session can do al
 5. **Record problems** for the joint pass. Anything needing a human — see Failure routing — goes into a `## Problems` section of that recipe's cleanup file (specific and actionable, e.g. "image 403 from host", "2 ingredients unmapped: X, Y", "duplicate of recipe 14"). Do not stop the run for these; note and continue.
 
 **Failure routing (autonomous):**
-- Soft scrape error (`error:true` / `msg` / empty recipe) → do **not** persist. Move the URL from *Standard URL backlog* to *Probably needs AI import* with the reason inline. Continue.
+- Soft scrape error (`error:true` / `msg` / empty recipe) **or hollow recipe** (no real ingredients) → do **not** persist via this skill. This is `tandoor-unstructured-import`'s domain. If the run can invoke it, switch to it for this URL; otherwise move the URL into *Probably needs AI import* with the reason inline (it gets picked up in the unstructured-import pass). Continue.
 - `duplicates` non-empty → do **not** persist (never create a second copy). Leave the URL in place, record the duplicate id in a problem note for the user. Continue.
 - Image both-paths fail → record `image: pending`, advance recipe to Stage 1, continue.
 - Mapping leaves ingredients unmapped → leave them on the dump step, list them in the problem note. Continue.
@@ -76,13 +89,27 @@ curl -sS --noproxy '*' -X POST \
 
 Check the body, not just the status (the endpoint returns 200 even on soft errors):
 - `duplicates` non-empty → stop and ask. Tandoor will happily create a second copy.
-- `error: true` or `msg` non-empty → report and bail.
+- `error: true` or `msg` non-empty → **hand off to `tandoor-unstructured-import`** (the scraper can't read this page; the agent should extract it directly). Don't just bail/park.
+- **Hollow recipe** — `error:false` but the recipe has no real ingredients (every step's `ingredients` empty, or a single empty step). This is the "schema present but empty `recipeIngredient`" trap. Also **hand off to `tandoor-unstructured-import`** rather than persisting an empty recipe.
 
 Capture: `recipe` dict, `images` list, `recipe.image_url`.
 
 ## Phase 2 — Persist
 
-Two transformations on the scrape payload before POST:
+Three transformations on the scrape payload before POST:
+
+0. **Normalize Unicode dashes in duration ranges to ASCII `-`.** kitshn (iOS)
+   parses step durations to drive its in-prep auto-timer, and a Unicode dash
+   between the numbers (`3–5 Minuten`, `10—12 Min.`) breaks that parse. Scraped
+   and AI-extracted step text often carries `–`/`—`. Fix only the
+   number-dash-number-before-a-time-unit pattern (leave prose en-dashes alone):
+   ```python
+   import re
+   _DUR = re.compile(r'(\d+)\s*[‐‑‒–—−]\s*(\d+)(\s*(?:Min|Minuten|Sek|Sekunden|Std|Stunden|h|min))')
+   for step in recipe["steps"]:
+       if step.get("instruction"):
+           step["instruction"] = _DUR.sub(r'\1-\2\3', step["instruction"])
+   ```
 
 1. **Pre-filter keywords by `import_keyword`.** The scraper returns every scraped keyword; the frontend (`vue3/src/pages/RecipeImportPage.vue:810`) drops the ones without an iexact match in the space:
    ```python
