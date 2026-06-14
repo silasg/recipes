@@ -25,7 +25,7 @@ Pick one per run (ask the user if ambiguous). The mode selects **which backlog s
 ## Prerequisites
 
 1. Credentials at project root: `tandoor_token.txt`, `tandoor_url.txt`.
-2. **(url mode) Seed unit aliases created first** (see `docs/agents/handoffs/2026-06-13-seed-unit-aliases.md`). Doing this before the loop means common cruft (`Gramm`, `Liter`, …) is normalized at scrape time, so the run produces far less Stage-4 noise. The seeding is a separate human-run pre-step, **not** part of this loop.
+2. **(url mode) Seed unit aliases created first.** Doing this before the loop means common cruft (`Gramm`, `Liter`, …) is normalized at scrape time, so the run produces far less Stage-4 noise. The seeding is a separate human-run pre-step, **not** part of this loop.
 3. **(instagram mode) agent-browser + a Chromium binary** (sandbox: `/usr/bin/chromium`; install once with `npm i -g agent-browser`), the space has **AI enabled** with at least one **working** provider, and you have **chosen the provider id once** for the whole run (recommend **OR Gemini Flash 3.5**; avoid Claude providers — markdown-fence bug). See `tandoor-instagram-import` for the provider gotcha table.
 4. Confirm `docs/mdimport/backlog.md` has the staged **Doing** section (stages 1–5) and a `docs/mdimport/cleanup/` directory exists (the example artifact shape is documented in `tandoor-url-import` autonomous mode).
 
