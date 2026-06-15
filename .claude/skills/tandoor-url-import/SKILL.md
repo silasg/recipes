@@ -294,7 +294,7 @@ None can **split** a food name into food + note. The `note` field is populated b
 | `/api/recipe/?foods={id}` | GET | Recipes that reference a food. Same param for `?units=`, `?keywords=`. |
 | `/api/step/{pk}/` | PATCH | `{ingredients:[…]}` sets that step's M2M; doesn't unlink from other steps. |
 | `/api/ingredient/{id}/` | PATCH | Per-ingredient writable nested. |
-| `/api/food/{id}/?extended=1` | GET | Adds `numrecipe`. Same for `unit`/`keyword`. |
+| `/api/food/{id}/?extended=1` | GET | Adds `numrecipe` (per-item). Same for `unit`/`keyword`. **The bare list (`/api/keyword/` etc.) omits it — `numrecipe` is `null` there**; for usage counts use `?extended=1` or `/api/recipe/?keywords={id}`. |
 | `/api/food/{src}/merge/{dst}/` | PUT | Body `{}`. Same shape for `unit`, `keyword`, `supermarket-category`. |
 | `/api/automation/` | POST | Snake_case `param_1/param_2/param_3`. |
 | `/api/property-type/` | GET | Nutritional dimensions defined in the space. |
