@@ -116,9 +116,63 @@ bot-block (e.g. edeka returns a 453-byte block page to curl). See
 `eval` → `close --all`); extract `document.documentElement.innerHTML` or the
 visible recipe text instead of og: meta tags.
 
-**Tier 3 — agent-browser + login** for paywalled sources (e.g. zeit.de). Use a
-logged-in session (the user has the subscription) so the full article body
-renders, then extract as in tier 2.
+**Tier 3 — logged-in session for paywalled sources** (e.g. zeit.de, where the
+user has the subscription). Two ways in; **prefer cookie replay** — it's far
+cheaper than a browser and **parallel-safe** (read-only, no shared browser
+state), so it's what to reach for in a bulk run. The *fetch* hits the public
+host, but each prep also does food/unit pre-resolution + dup-check GETs against
+the **homelab** instance, so still cap the wave (~4–5 concurrent) — the box is
+small (see the persist concurrency note under "Two modes").
+
+*Tier 3a — cookie replay (preferred).* The user exports their logged-in cookies
+to a gitignored file (e.g. `zeit_cookies.txt` at project root — a Cookie-Editor
+JSON export, a Netscape file, or a raw header string). Normalize it once to a
+single header, then fetch like tier 1 with a `Cookie:` header (public host →
+through the proxy, **no** `--noproxy`):
+```bash
+python3 - <<'PY'                       # normalize any of the 3 formats → one header
+import json,re
+raw=open('zeit_cookies.txt',encoding='utf-8',errors='replace').read().strip()
+header=None
+try:
+    j=json.loads(raw)
+    if isinstance(j,list):   header="; ".join(f"{c['name']}={c['value']}" for c in j if c.get('name'))
+    elif isinstance(j,dict): header="; ".join(f"{k}={v}" for k,v in j.items())
+except Exception: pass
+if header is None:
+    if raw.startswith('# Netscape') or re.search(r'\t.*\t', raw):
+        header="; ".join(f"{f[5]}={f[6]}" for f in (ln.split('\t') for ln in raw.splitlines() if ln and not ln.startswith('#')) if len(f)>=7)
+    else:
+        header=raw.split(':',1)[1].strip() if raw.lower().startswith('cookie:') else raw
+open('/tmp/cookie_header.txt','w').write(header)
+PY
+UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+curl -sL -A "$UA" -H "Cookie: $(cat /tmp/cookie_header.txt)" -o /tmp/page.html "$URL"
+```
+**Validate the session before extracting** (and once per prep wave in a bulk run):
+a logged-in page has login markers, NO teaser markers, and a real `Zutaten`
+block. For zeit.de a valid session returns the full ~275 KB article; anonymous
+returns a `data-is-truncated-by-paywall` teaser.
+```bash
+python3 - <<'PY'
+import re; t=open('/tmp/page.html',encoding='utf-8',errors='replace').read()
+p=re.sub(r'\s+',' ',re.sub(r'<[^>]+>',' ',t))
+teaser=[m for m in ['weiterlesen mit','kostenlos testen','Zum Abo','jetzt testen','Registrieren Sie sich'] if re.search(re.escape(m),p,re.I)]
+loggedin=any(re.search(re.escape(m),p,re.I) for m in ['Abmelden','Mein Konto','Meine ZEIT'])  # zeit markers; adapt per host
+print("SESSION_OK" if (loggedin and not teaser and 'Zutaten' in p) else f"SESSION_BAD teaser={teaser} loggedin={loggedin}")
+PY
+```
+**Cookies expire.** If the probe says `SESSION_BAD`, or any fetch returns a
+teaser mid-run: STOP, ask the user to re-export the cookie file, and resume — do
+**not** extract from a teaser or guess content to "get past" the paywall. In a
+bulk run a prep agent that sees a teaser should return
+`{"content_ok":false,"reason":"session_expired"}` and the orchestrator pauses.
+(Cookie replay drove the full 2026-06-15 ZEIT Magazin batch, RIDs 87–113.)
+
+*Tier 3b — agent-browser + login (fallback).* If the host needs JS to render the
+article even when authenticated, or cookie replay won't hold a session, use a
+logged-in agent-browser session (tier-2 invocation pattern) and extract from the
+rendered body. Heavier and not parallel-safe — only when 3a fails.
 
 **Dead-host fallback — Wayback.** If the live host is down (HTTP 500 /
 connection refused) check archive.org and fetch the snapshot:
