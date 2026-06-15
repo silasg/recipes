@@ -19,6 +19,15 @@ From project root (gitignored):
 
 Network: in this sandbox Python's `urllib` is blocked against private IPs while `curl --noproxy '*'` is allowed. Default to `curl` for HTTP and `python3` only for JSON munging. `pip install` is PEP-668-blocked.
 
+### Concurrency — keep it low (the instance is a small homelab)
+
+The Tandoor instance is a **self-hosted homelab box**, not a scaled service. Don't fan out heavy parallel request storms against it — run backfill **serially, or at most ~2–3 concurrent**. Two concrete reasons:
+
+1. **`/fdc/` and `/fdc-search/` share ONE server-side USDA key** (`FDC_API_KEY` on the instance), not a per-request key. Several backfill agents running in parallel all draw on that single quota and **every `/fdc/` POST starts returning HTTP 429** — even with a real (non-DEMO) key configured. Observed 2026-06-15: 4 parallel agents → uniform 429, all forced onto the manual fallback (§1e). If you must parallelise food work, **serialize the FDC calls** (one agent owns FDC, or throttle to one in-flight request) and let the others do UC/web work.
+2. General load: backfill GETs every food + unit + does a recipe re-read; multiplied across many parallel agents it's a lot of requests for a Raspberry-Pi-class host. Prefer a single sequential pass, or partition by food with a small concurrency cap.
+
+Property writes and food-scoped UCs are **name-keyed idempotent**, so a serial (or retried) run is always safe — there's no correctness cost to going slow.
+
 ## Mental model — read this once before touching anything
 
 Tandoor aggregates per-recipe nutrition in `FoodPropertyHelper.calculate_recipe_properties` (`cookbook/helper/property_helper.py`). For every ingredient, for every PropertyType in the space, it:
@@ -188,7 +197,7 @@ The action does several things atomically (`cookbook/views/api.py:1127`):
       "$URL/api/property/$PROPERTY_ID/"
     ```
 
-- HTTP 429 = USDA API rate limit (per-key, on Tandoor's `FDC_API_KEY`). Either wait + retry, or fall through to 1e.
+- HTTP 429 = USDA API rate limit (per-key, on Tandoor's **single** `FDC_API_KEY` — shared by every request, so parallel agents exhaust it together; see §Concurrency). Either serialize + wait + retry, or fall through to 1e. In a bulk run, expect to live on 1e if you didn't serialize the FDC calls.
 
 ### 1e — Manual fallback (rate-limited or no FDC match)
 
