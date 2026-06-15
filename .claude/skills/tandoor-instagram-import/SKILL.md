@@ -122,6 +122,17 @@ Checks before continuing:
 
 ## Phase 1 — AI import (caption → recipe)
 
+> **Higher-quality alternative — bypass this endpoint.** `/api/ai-import/` runs
+> the caption through the space's AI provider (Gemini Flash) and is subject to the
+> Claude markdown-fence bug. For Opus-quality extraction, instead hand the scraped
+> caption text to **`tandoor-unstructured-import` Phase 1** (the agent extracts the
+> caption directly, maps ingredients, pre-resolves foods, and POSTs to
+> `/api/recipe/`) — no AI-endpoint call at all. Use that path when you want the
+> best extraction or a Claude provider would hit the fence bug; use the
+> `/api/ai-import/` path below when you specifically want the server-side
+> provider. (Fully migrating this skill onto the direct engine is a separate
+> change.)
+
 `POST /api/ai-import/` is **multipart** (`MultiPartParser`; JSON body → 415).
 Fields (match kitshn): `recipe_id` (empty), `file` (empty — we send text only),
 `text` (the caption), `ai_provider_id` (chosen provider).
