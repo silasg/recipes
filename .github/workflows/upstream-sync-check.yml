@@ -1,0 +1,150 @@
+name: Upstream Sync Check
+
+# Detects new upstream (TandoorRecipes/recipes) releases and prepares the fork bump.
+# Clean + tests green  -> opens a PR into fork/default-unit.
+# Conflicts or red     -> opens an issue for manual handling (run the fork-upstream-sync skill).
+# Never tags or publishes images on its own — cutting fork/<version>/default-unit stays manual.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    if: github.repository_owner == 'silasg'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      FORK_BRANCH: fork/default-unit
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fork/default-unit
+          fetch-depth: 0
+
+      - name: Determine current and latest versions
+        id: versions
+        run: |
+          git remote add upstream https://github.com/TandoorRecipes/recipes.git
+          git fetch --quiet upstream 'refs/tags/*:refs/tags/upstream/*'
+          LATEST=$(git tag -l 'upstream/*' | sed 's|upstream/||' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          CURRENT=$(git tag -l 'fork/*/default-unit' | sed -E 's|fork/(.*)/default-unit|\1|' | sort -V | tail -1)
+          echo "latest=$LATEST"   >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Current fork version: $CURRENT | Latest upstream: $LATEST"
+          if [ "$LATEST" = "$CURRENT" ] || [ -z "$LATEST" ]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          else
+            HIGHER=$(printf '%s\n%s\n' "$CURRENT" "$LATEST" | sort -V | tail -1)
+            [ "$HIGHER" = "$LATEST" ] && echo "up_to_date=false" >> "$GITHUB_OUTPUT" || echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip if already handled
+        id: guard
+        if: steps.versions.outputs.up_to_date == 'false'
+        run: |
+          BRANCH="sync/upstream-${{ steps.versions.outputs.latest }}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Branch $BRANCH already exists — nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attempt merge
+        id: merge
+        if: steps.versions.outputs.up_to_date == 'false' && steps.guard.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          LATEST="${{ steps.versions.outputs.latest }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${{ steps.guard.outputs.branch }}" "origin/${FORK_BRANCH}"
+
+          if git merge --no-commit --no-ff "upstream/$LATEST"; then
+            echo "clean merge"
+          else
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            echo "Conflicts:"; echo "$CONFLICTS"
+            NON_LOCALE=$(echo "$CONFLICTS" | grep -vE '^vue3/src/locales/.*\.json$' || true)
+            if [ -n "$NON_LOCALE" ]; then
+              echo "reason=Non-locale conflicts that need manual resolution:%0A$(echo "$CONFLICTS" | tr '\n' ',')" >> "$GITHUB_OUTPUT"
+              git merge --abort
+              echo "status=conflict" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # locale-only conflicts: take upstream, then re-add fork keys
+            echo "$CONFLICTS" | while read -r f; do [ -n "$f" ] && git checkout --theirs "$f" && git add "$f"; done
+          fi
+
+          python3 .github/scripts/ensure_fork_locale_keys.py
+          git add vue3/src/locales/en.json vue3/src/locales/de.json
+          git commit -m "chore(sync): merge upstream $LATEST into fork (keep space default_unit)"
+          echo "status=merged" >> "$GITHUB_OUTPUT"
+
+      - name: Open issue on conflict
+        if: steps.merge.outputs.status == 'conflict'
+        run: |
+          gh issue create \
+            --title "Upstream ${{ steps.versions.outputs.latest }} needs manual sync" \
+            --body $'Automatic merge of upstream `${{ steps.versions.outputs.latest }}` into `fork/default-unit` hit conflicts outside the locale files.\n\n${{ steps.merge.outputs.reason }}\n\nRun the **fork-upstream-sync** skill locally to resolve (migration re-linearization and/or serializer overlap), then open the PR.'
+
+      # ---- Verification (Python 3.12+, matches upstream CI) ----
+      - name: Set up Python 3.12
+        if: steps.merge.outputs.status == 'merged'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install system + python deps
+        if: steps.merge.outputs.status == 'merged'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -q libldap2-dev libsasl2-dev libxml2-dev libxmlsec1-dev libxmlsec1-openssl libxslt-dev
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify (migrations, property tests, API delta)
+        id: verify
+        if: steps.merge.outputs.status == 'merged'
+        env:
+          DJANGO_SETTINGS_MODULE: recipes.test_settings
+          SECRET_KEY: ci-sync-check
+        run: |
+          set -euo pipefail
+          echo "::group::migration chain"
+          python manage.py makemigrations --check --dry-run
+          echo "::endgroup::"
+          echo "::group::property calculation tests"
+          pytest cookbook/tests/other/test_food_property.py -o addopts="" -p no:cacheprovider -q
+          echo "::endgroup::"
+          echo "::group::openapi default_unit present"
+          python manage.py spectacular --file /tmp/schema.yaml --skip-checks
+          grep -A3 'default_unit:' /tmp/schema.yaml | grep -q 'Unit' && echo "default_unit present on Space schema"
+          echo "::endgroup::"
+
+      - name: Push branch and open PR
+        if: steps.merge.outputs.status == 'merged' && steps.verify.outcome == 'success'
+        run: |
+          LATEST="${{ steps.versions.outputs.latest }}"
+          git push -u origin "${{ steps.guard.outputs.branch }}"
+          gh pr create \
+            --base "$FORK_BRANCH" \
+            --head "${{ steps.guard.outputs.branch }}" \
+            --title "Bump fork to upstream $LATEST (keep space default-unit)" \
+            --body $'Automated upstream sync from `${{ steps.versions.outputs.current }}` to `'"$LATEST"$'`.\n\n- Merge clean (or locale-only conflict auto-resolved, fork keys re-added)\n- `makemigrations --check` passes — migration chain linear\n- `test_food_property.py` passes — property calculation intact\n- OpenAPI still exposes `default_unit` on `Space`\n\nAfter merge, cut `fork/'"$LATEST"$'/default-unit` to publish the image.'
+
+      - name: Open issue on verification failure
+        if: steps.merge.outputs.status == 'merged' && steps.verify.outcome == 'failure'
+        run: |
+          gh issue create \
+            --title "Upstream ${{ steps.versions.outputs.latest }} merged but verification failed" \
+            --body "The merge applied cleanly but migrations/property-tests/schema checks failed. Run the fork-upstream-sync skill locally and inspect the workflow logs." || true
