@@ -5,25 +5,14 @@ name: Upstream Sync Check
 # Conflicts or red     -> opens an issue for manual handling (run the fork-upstream-sync skill).
 # Never tags or publishes images on its own — cutting fork/<version>/default-unit stays manual.
 #
-# Triggers (GitHub can't subscribe to another repo's releases, so this is poll + optional push):
-#   * schedule        - hourly fallback poll. Best-effort timing; auto-disables after 60 days
-#                       of repo inactivity (a non-issue while the fork syncs regularly).
-#   * workflow_dispatch - run it manually from the Actions tab.
-#   * repository_dispatch (type: upstream-release) - near-instant "push". Point any watcher of
-#     upstream's release feed (https://github.com/TandoorRecipes/recipes/releases.atom) at:
-#       curl -X POST -H "Authorization: Bearer <PAT with repo scope>" \
-#            -H "Accept: application/vnd.github+json" \
-#            https://api.github.com/repos/silasg/recipes/dispatches \
-#            -d '{"event_type":"upstream-release"}'
-#     (n8n / Zapier / IFTTT / a small function all do this in one step.) The job is idempotent,
-#     so extra triggers are harmless — it no-ops once a branch/PR for that version exists.
+# Runs on a daily schedule (best-effort timing; GitHub auto-disables scheduled workflows after
+# 60 days of repo inactivity, a non-issue while the fork syncs regularly). Also runnable manually
+# from the Actions tab. The job is idempotent — it no-ops once a branch/PR for that version exists.
 
 on:
   schedule:
-    - cron: '17 * * * *' # hourly fallback poll (offset to avoid top-of-hour congestion)
+    - cron: '17 6 * * *' # daily, 06:17 UTC
   workflow_dispatch: {}
-  repository_dispatch:
-    types: [upstream-release]
 
 permissions:
   contents: write
