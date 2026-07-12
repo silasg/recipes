@@ -79,7 +79,8 @@ Commit the merge once `git diff --diff-filter=U` is empty.
 ### 4. Verify (Python 3.12+)
 ```bash
 export DJANGO_SETTINGS_MODULE=recipes.test_settings SECRET_KEY=ci
-python manage.py makemigrations --check --dry-run     # chain is linear, nothing missing
+python manage.py makemigrations --check --dry-run --skip-checks   # chain linear, nothing missing
+# (--skip-checks avoids test_settings' admin.E406 system-check noise, unrelated to migrations)
 pytest cookbook/tests/other/test_food_property.py -o addopts="" -p no:cacheprovider   # 5 pass
 python manage.py spectacular --file /tmp/s.yaml --skip-checks   # then confirm Space has default_unit
 grep -A3 'default_unit' /tmp/s.yaml | grep -q Unit && echo "API: default_unit present"

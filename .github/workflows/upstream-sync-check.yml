@@ -125,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "::group::migration chain"
-          python manage.py makemigrations --check --dry-run
+          python manage.py makemigrations --check --dry-run --skip-checks
           echo "::endgroup::"
           echo "::group::property calculation tests"
           pytest cookbook/tests/other/test_food_property.py -o addopts="" -p no:cacheprovider -q
