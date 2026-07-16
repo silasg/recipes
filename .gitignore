@@ -103,6 +103,9 @@ tandoor_token.txt
 tandoor_url.txt
 openrouter_api_key.txt
 fdc_api_key.txt
+zeit_cookies.txt
+zeit_cookie_jar.txt
+zeit_import_api_key.txt
 
 # Local AI provider / migration tooling output
 contrib/prodexport/

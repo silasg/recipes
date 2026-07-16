@@ -1,0 +1,51 @@
+# Example compose service for the ZEIT -> Tandoor import HTTP service.
+#
+# Copy this into your infra repo's compose file and adjust paths/networks.
+# The service must be able to reach BOTH:
+#   - your Tandoor instance (join the same docker network, see below)
+#   - the public internet (zeit.de / img.zeit.de)
+# and your reverse proxy (Caddy) must be able to reach this service.
+
+services:
+  zeit-import:
+    # Either build from this directory (build context = contrib/zeit_import/) ...
+    build: ./zeit_import
+    # ... or reference a prebuilt image instead:
+    # image: zeit-import:latest
+    restart: unless-stopped
+
+    environment:
+      # Tandoor base URL as reachable FROM THIS CONTAINER. When Tandoor runs on
+      # the same docker network, use its service name + internal port:
+      TANDOOR_URL: http://tandoor:8080
+      # Where the mounted secrets/state live inside the container:
+      TANDOOR_TOKEN_FILE: /config/tandoor_token.txt
+      ZEIT_IMPORT_API_KEY_FILE: /config/zeit_import_api_key.txt
+      ZEIT_COOKIE_JAR: /data/zeit_cookie_jar.txt
+      # Route prefix handling (see README "HTTP service"):
+      #   BASE_PATH="" -> routes at /import, /health (use Caddy handle_path, which
+      #                   strips the /zeit prefix before proxying)
+      #   BASE_PATH=/zeit -> routes at /zeit/import (use Caddy handle, no stripping)
+      BASE_PATH: ""
+      PORT: "8199"
+
+    volumes:
+      # Secrets: read-only single-file mounts.
+      - ./secrets/tandoor_token.txt:/config/tandoor_token.txt:ro
+      - ./secrets/zeit_import_api_key.txt:/config/zeit_import_api_key.txt:ro
+      # Cookie jar: MUST BE WRITABLE and MUST PERSIST. ZEIT's short-lived session
+      # JWTs expire quickly; on every fetch curl refreshes them via the long-lived
+      # SSO token and writes the updated jar back. A read-only or throwaway jar
+      # dead-ends on the ZEIT login page once the session JWTs expire.
+      # Put your bootstrapped zeit_cookie_jar.txt into ./zeit-import-data/ once
+      # (or use a named volume and copy it in with `docker compose cp`).
+      - ./zeit-import-data:/data
+
+    networks:
+      # Join the same network as Tandoor AND your reverse proxy (Caddy) so both
+      # `http://tandoor:8080` and `reverse_proxy zeit-import:8199` resolve.
+      - tandoor
+
+networks:
+  tandoor:
+    external: true
