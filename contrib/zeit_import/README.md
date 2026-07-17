@@ -115,9 +115,11 @@ Exit code 0 if everything imported; non-zero otherwise.
 
 | route | method | auth | behavior |
 |---|---|---|---|
-| `{BASE_PATH}/import` | POST | `X-Api-Key` | run the pipeline for one URL, return a plain-text report |
+| `{BASE_PATH}/` | GET | key/cookie | browser UI: login form when unauthenticated, recipe picker when authenticated |
+| `{BASE_PATH}/login` | POST | none | form (`key=...`); correct key sets the auth cookie and redirects to `./` |
+| `{BASE_PATH}/import` | POST | key/cookie | run the pipeline for one URL, return a plain-text report |
 | `{BASE_PATH}/health` | GET | none | `200 ok` |
-| anything else | — | `X-Api-Key` | 404 |
+| anything else | — | key/cookie | 404 |
 
 `POST /import` accepts `application/x-www-form-urlencoded` (`url=...&dry_run=1`) or
 `application/json` (`{"url": ..., "dry_run": true}`). Responses (always
@@ -133,10 +135,48 @@ Exit code 0 if everything imported; non-zero otherwise.
 - **502** — pipeline failure with the reason (login wall → re-export cookies; fetch
   or Tandoor errors).
 
-Auth: every route except `/health` requires the `X-Api-Key` header. The secret is
+Auth: every route except `/health` and the login form accepts **either** the
+`X-Api-Key` header (Shortcut path) **or** a `zeit_import_key` cookie holding the
+same key (browser path); both are compared constant-time. The secret is
 resolved at startup — env `ZEIT_IMPORT_API_KEY` > file named by
 `ZEIT_IMPORT_API_KEY_FILE` > `<project-root>/zeit_import_api_key.txt` — and the
 service **refuses to start without one** (fail closed).
+
+### Browser usage
+
+Open `{BASE_PATH}/` in a browser (works as an iOS home-screen PWA). Without the
+cookie you get a minimal key-entry form; posting the correct key to `./login`
+sets `zeit_import_key` (`HttpOnly; SameSite=Lax; Path=/; Max-Age=1y`, plus
+`Secure` when the request arrived with `X-Forwarded-Proto: https` — Caddy sets
+that header; plain-HTTP LAN testing still works without it) and redirects to
+the picker.
+
+The picker fetches `https://www.zeit.de/serie/wochenmarkt` server-side (through
+the usual cookie jar — harmless on this public page) and lists the newest ≤15
+article teasers with title + thumbnail. Entries already imported into Tandoor
+are shown unchecked/disabled with a `#<id> ✓` badge. Select entries and/or
+paste a free-text URL, hit **Import**: vanilla JS POSTs to `./import`
+sequentially (the server lock serializes imports anyway; sequential calls give
+per-recipe progress) and appends each plain-text report to a log area.
+
+**Imported detection**: Tandoor has no `?source_url=` filter and its recipe
+*list* serializer omits `source_url` (only the detail serializer has it). So
+the service lists the recipe ids tagged `ZEIT Magazin`
+(`/api/recipe/?keywords=<id>&page_size=200`), fetches each *unknown* id's
+detail exactly once ever (an id's `source_url` never changes, so the id→url
+pairs are cached in-process for the life of the server) and re-fetches only the
+cheap id list at most every **10 minutes** (`IMPORTED_CACHE_TTL`). The first
+picker render after a restart therefore takes ~30 s (one detail GET per ZEIT
+recipe, 6 in parallel); subsequent renders are instant. Lookup failures degrade
+gracefully: the picker renders without badges. URLs are matched after
+normalization (trailing `/`, `/komplettansicht`, query and fragment stripped).
+
+**Relative URLs / Caddy**: every URL in the HTML (form action `./login`, JS
+`fetch('./import')`, redirect `Location: ./`) is deliberately *relative* —
+behind `handle_path /zeit/*` the browser-visible path has a `/zeit` prefix the
+app never sees, so absolute paths would break. In the non-stripping
+(`BASE_PATH=/zeit`) mode, `GET /zeit` (no trailing slash) 301s to `/zeit/` so
+the relative URLs resolve correctly.
 
 Env vars: `BIND_ADDR` (default `0.0.0.0`), `PORT` (default `8199`), `BASE_PATH`
 (default empty), plus the CLI's `TANDOOR_URL` / `TANDOOR_TOKEN_FILE` /
@@ -206,6 +246,8 @@ python3 -m pytest tests/ -v
 ```
 
 The local `pytest.ini` keeps the repo-root Django-wired pytest config out of the way.
-Fixtures are trimmed real pages (`halloumi.html`, `quitte_multi.html`) plus two
-synthetic variants derived from them (`generic_name.html`, `no_subheading.html`).
-All HTTP is stubbed by monkeypatching `run_curl`.
+Fixtures are trimmed real pages (`halloumi.html`, `quitte_multi.html`,
+`wochenmarkt_index.html`) plus two synthetic variants derived from them
+(`generic_name.html`, `no_subheading.html`). All HTTP is stubbed by
+monkeypatching `run_curl` (or, in the service tests, the module-level
+pipeline/picker functions).
