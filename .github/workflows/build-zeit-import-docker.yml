@@ -8,6 +8,8 @@ on:
     paths:
       - 'contrib/zeit_import/**'
       - '.github/workflows/build-zeit-import-docker.yml'
+    tags:
+      - 'zeit-import/v*'
   workflow_dispatch:
 
 jobs:
@@ -25,6 +27,23 @@ jobs:
         run: |
           pip install pytest
           python3 -m pytest tests/ -q
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/recipes-zeit-import"
+          if [[ "$GITHUB_REF" == refs/tags/zeit-import/v* ]]; then
+            # Release: zeit-import/v1.2.3 -> 1.2.3, 1.2, 1, latest
+            VERSION="${GITHUB_REF#refs/tags/zeit-import/v}"
+            MAJOR="${VERSION%%.*}"
+            MINOR="${VERSION%.*}"
+            TAGS="${IMAGE}:${VERSION},${IMAGE}:${MINOR},${IMAGE}:${MAJOR},${IMAGE}:latest"
+          else
+            # Branch push / manual: never moves a release tag
+            TAGS="${IMAGE}:edge,${IMAGE}:${GITHUB_SHA}"
+          fi
+          echo "TAGS=${TAGS}" >> $GITHUB_OUTPUT
+          echo "Image tags: ${TAGS}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -44,8 +63,6 @@ jobs:
           pull: true
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/recipes-zeit-import:latest
-            ghcr.io/${{ github.repository_owner }}/recipes-zeit-import:${{ github.sha }}
+          tags: ${{ steps.tags.outputs.TAGS }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
