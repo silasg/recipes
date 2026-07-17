@@ -226,6 +226,23 @@ def test_picker_marks_imported_entries(server_factory, picker_stub):
     assert f'value="{ENTRIES[0]["url"]}"' in body
 
 
+def test_picker_entries_link_to_article(server_factory, picker_stub):
+    port = server_factory()
+    _, body, _ = request(port, "GET", "/", headers={"Cookie": f"zeit_import_key={KEY}"})
+    # every entry (imported or not) links to the article so it can be read before importing
+    for entry in ENTRIES:
+        assert f'<a class="read" href="{entry["url"]}" target="_blank" rel="noopener">' in body
+    # the link must sit outside the label so tapping it doesn't toggle the checkbox
+    assert "</label><a" in body.replace("\n", "")
+
+
+def test_picker_log_box_hidden_while_empty(server_factory, picker_stub):
+    port = server_factory()
+    _, body, _ = request(port, "GET", "/", headers={"Cookie": f"zeit_import_key={KEY}"})
+    # the dark results box must not render as an empty black bar before the first import
+    assert "pre#log:empty{display:none}" in body
+
+
 def test_picker_uses_relative_urls_only(server_factory, picker_stub):
     port = server_factory()
     _, body, _ = request(port, "GET", "/", headers={"Cookie": f"zeit_import_key={KEY}"})

@@ -265,8 +265,9 @@ body{font-family:-apple-system,system-ui,sans-serif;margin:0;background:#fafafa;
 main{max-width:640px;margin:0 auto;padding:16px}
 h1{font-size:1.3rem}
 ul.entries{list-style:none;padding:0;margin:0 0 12px}
-ul.entries li{background:#fff;border:1px solid #ddd;border-radius:8px;margin:6px 0}
-ul.entries label{display:flex;align-items:center;gap:10px;padding:8px;min-height:44px}
+ul.entries li{background:#fff;border:1px solid #ddd;border-radius:8px;margin:6px 0;display:flex;align-items:center}
+ul.entries label{display:flex;align-items:center;gap:10px;padding:8px;min-height:44px;flex:1}
+a.read{flex:none;padding:12px;color:#0b62d6;text-decoration:none;font-size:1.1rem}
 ul.entries input[type=checkbox]{width:22px;height:22px;flex:none}
 .thumb{width:44px;height:44px;border-radius:6px;object-fit:cover;flex:none;background:#eee;display:inline-block}
 li.done{opacity:.6}
@@ -276,6 +277,7 @@ button{padding:12px 20px;font-size:1rem;border:0;border-radius:8px;background:#0
 button:disabled{opacity:.5}
 .error{color:#c00}
 pre#log{white-space:pre-wrap;background:#111;color:#ddd;padding:10px;border-radius:8px;font-size:.75rem;min-height:2em}
+pre#log:empty{display:none}
 """
 
 LOGIN_TEMPLATE = string.Template("""<!DOCTYPE html>
@@ -353,12 +355,14 @@ def render_picker(entries: list[dict], imported: dict[str, int], error: str | No
         thumb = (f'<img class="thumb" src="{html_lib.escape(entry["image"])}" alt="" loading="lazy">'
                  if entry.get("image") else '<span class="thumb"></span>')
         recipe_id = imported.get(normalize_source_url(entry["url"]))
+        # the article link sits outside the label so tapping it doesn't toggle the checkbox
+        read = f'<a class="read" href="{html_lib.escape(entry["url"])}" target="_blank" rel="noopener">&#8599;</a>'
         if recipe_id:
             items.append(f'<li class="done"><label><input type="checkbox" disabled>{thumb}'
-                         f'<span>{title} <span class="badge">#{recipe_id} ✓</span></span></label></li>')
+                         f'<span>{title} <span class="badge">#{recipe_id} ✓</span></span></label>{read}</li>')
         else:
             items.append(f'<li><label><input type="checkbox" class="pick" value="{html_lib.escape(entry["url"])}">'
-                         f'{thumb}<span>{title}</span></label></li>')
+                         f'{thumb}<span>{title}</span></label>{read}</li>')
     return PICKER_TEMPLATE.substitute(style=PAGE_STYLE, error=_error_html(error), items="\n".join(items))
 
 
