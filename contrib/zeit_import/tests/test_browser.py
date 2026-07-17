@@ -345,6 +345,16 @@ def test_imported_map_builds_normalized_url_map(tandoor_stub):
     assert result["https://www.zeit.de/zeit-magazin/2026/04/misosuppe-rezept-wochenmarkt"] == 42
 
 
+def test_fresh_cache_fetches_even_on_low_uptime(tandoor_stub, monkeypatch):
+    # time.monotonic() is seconds-since-boot on Linux; on a freshly booted machine
+    # (CI runner, rebooted homelab box) it is smaller than the TTL, and a fresh
+    # cache with a zero timestamp must not be mistaken for valid
+    monkeypatch.setattr(serve.time, "monotonic", lambda: 42.0)
+    result = serve.imported_recipes_map()
+    assert tandoor_stub  # the API was actually queried
+    assert result[serve.normalize_source_url(RECIPE_URLS[41])] == 41
+
+
 def test_imported_map_uses_ttl_cache(tandoor_stub):
     serve.imported_recipes_map()
     first = len(tandoor_stub)

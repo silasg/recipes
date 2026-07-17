@@ -192,7 +192,10 @@ def normalize_source_url(url: str) -> str:
 
 
 def _fresh_imported_cache() -> dict:
-    return {"at": 0.0, "map": {}, "details": {}, "lock": threading.Lock()}
+    # -inf, not 0.0: time.monotonic() is seconds-since-boot on Linux, so shortly
+    # after boot (CI runners, rebooted hosts) `monotonic() - 0.0` is below the TTL
+    # and an empty cache would be served as if it were fresh
+    return {"at": float("-inf"), "map": {}, "details": {}, "lock": threading.Lock()}
 
 
 _IMPORTED_CACHE = _fresh_imported_cache()
