@@ -31,7 +31,7 @@
                         <v-textarea v-model="editingObj.message" :label="$t('Message')" clearable></v-textarea>
 
                         <model-select model="Unit" :label="$t('DefaultUnit')" v-model="editingObj.defaultUnit" clearable
-                                      :hint="$t('DefaultUnitHelp')" persistent-hint class="mb-6"></model-select>
+                                      :hint="$t('SpaceDefaultUnitHelp')" persistent-hint class="mb-6"></model-select>
 
                         <space-limits-info :space="editingObj" :show-thank-you="false" v-if="isUpdate()" class="mt-6"></space-limits-info>
 

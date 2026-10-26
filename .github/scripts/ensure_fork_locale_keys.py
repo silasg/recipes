@@ -17,11 +17,11 @@ ANCHOR = "DefaultShoppingListHelp"  # key that alphabetically precedes DefaultUn
 KEYS = {
     "vue3/src/locales/en.json": [
         ('DefaultUnit', 'Default Unit'),
-        ('DefaultUnitHelp', 'Unit used for property calculations when ingredients have no unit specified.'),
+        ('SpaceDefaultUnitHelp', 'Unit used for property calculations when ingredients have no unit specified.'),
     ],
     "vue3/src/locales/de.json": [
         ('DefaultUnit', 'Standardeinheit'),
-        ('DefaultUnitHelp', 'Einheit für Nährwertberechnungen, wenn Zutaten keine Einheit haben.'),
+        ('SpaceDefaultUnitHelp', 'Einheit für Nährwertberechnungen, wenn Zutaten keine Einheit haben.'),
     ],
 }
 
