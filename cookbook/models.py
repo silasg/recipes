@@ -219,6 +219,8 @@ class MergeModelMixin:
 
 
 class PermissionModelMixin:
+    scoped_model = True
+
     @staticmethod
     def get_space_key():
         return ('space',)
@@ -578,6 +580,7 @@ class Household(models.Model, PermissionModelMixin):
     name = models.CharField(max_length=128)
 
     space = models.ForeignKey(Space, on_delete=models.CASCADE)
+    objects = ScopedManager(space='space')
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -870,7 +873,7 @@ class Food(ExportModelOperationsMixin('food'), TreeModel, PermissionModelMixin):
 
         # remove all inherited fields from food
         through = Food.inherit_fields.through
-        through.objects.all().delete()
+        through.objects.filter(food__space=space).all().delete()
 
         # food is going to inherit attributes
         if len(inherit) > 0:
